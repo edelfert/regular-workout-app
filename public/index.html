@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workout Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Workout Tracker</h1>
+    <nav>
+      <button id="nav-dashboard" class="nav-btn active" onclick="showView('dashboard')">Dashboard</button>
+      <button id="nav-progress" class="nav-btn" onclick="showView('progress')">Progress</button>
+      <button id="nav-manage" class="nav-btn" onclick="showView('manage')">Manage</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Dashboard View -->
+    <div id="view-dashboard" class="view">
+      <div id="day-tabs" class="day-tabs"></div>
+      <div id="loading-dashboard" class="loading">Loading exercises...</div>
+      <div id="error-dashboard" class="error-msg" style="display:none;"></div>
+      <div id="exercises-list"></div>
+    </div>
+
+    <!-- Progress View -->
+    <div id="view-progress" class="view" style="display:none;">
+      <h2>Exercise Progress</h2>
+      <div class="progress-controls">
+        <select id="progress-day-select"><option value="">Select a day...</option></select>
+        <select id="progress-exercise-select"><option value="">Select an exercise...</option></select>
+      </div>
+      <div id="loading-progress" class="loading" style="display:none;">Loading progress...</div>
+      <div id="error-progress" class="error-msg" style="display:none;"></div>
+      <div id="progress-chart-container" style="display:none;">
+        <canvas id="progress-chart"></canvas>
+      </div>
+      <div id="progress-suggestion" class="suggestion-box" style="display:none;"></div>
+      <div id="progress-history" style="display:none;">
+        <h3>Session History</h3>
+        <table id="progress-table">
+          <thead><tr><th>Date</th><th>Weight</th><th>Reps</th><th>Avg Reps</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Manage View -->
+    <div id="view-manage" class="view" style="display:none;">
+      <h2>Manage Exercises &amp; Days</h2>
+
+      <section class="manage-section">
+        <h3>Add Exercise to Existing Day</h3>
+        <form id="add-exercise-form" class="manage-form">
+          <label>Day:
+            <select id="add-ex-day" required><option value="">Select...</option></select>
+          </label>
+          <label>Name: <input type="text" id="add-ex-name" required></label>
+          <label>Target Sets: <input type="number" id="add-ex-sets" value="3" min="1" required></label>
+          <label>Rep Range Low: <input type="number" id="add-ex-low" min="1" required></label>
+          <label>Rep Range High: <input type="number" id="add-ex-high" min="1" required></label>
+          <label><input type="checkbox" id="add-ex-bw"> Bodyweight</label>
+          <label><input type="checkbox" id="add-ex-compound"> Compound</label>
+          <label>Starting Weight (lbs): <input type="number" id="add-ex-weight" step="0.5" min="0"></label>
+          <div id="add-ex-error" class="error-msg" style="display:none;"></div>
+          <button type="submit">Add Exercise</button>
+        </form>
+      </section>
+
+      <section class="manage-section">
+        <h3>Add New Workout Day</h3>
+        <form id="add-day-form" class="manage-form">
+          <label>Day Name: <input type="text" id="add-day-name" required placeholder="e.g. Day 5 — Arms"></label>
+          <div id="new-day-exercises">
+            <h4>Exercises</h4>
+            <div id="new-day-ex-list"></div>
+            <button type="button" id="add-day-ex-btn" class="btn-secondary">+ Add Exercise</button>
+          </div>
+          <div id="add-day-error" class="error-msg" style="display:none;"></div>
+          <button type="submit">Create Day</button>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

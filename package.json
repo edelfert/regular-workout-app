@@ -1,0 +1,22 @@
+{
+  "name": "regular-workout-app",
+  "version": "1.0.0",
+  "description": "A local workout tracking app with progressive overload suggestions",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js",
+    "test": "node --test test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:42863/git/edelfert/regular-workout-app"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "express": "^5.2.1"
+  }
+}
