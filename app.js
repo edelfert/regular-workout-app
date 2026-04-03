@@ -135,26 +135,24 @@ function loadExercises(dayId) {
         lastHtml = `<div class="last-session-info">Last: ${weightStr} \u2014 ${lastSession.reps.join(', ')} reps on ${lastSession.date}</div>`;
       }
 
-      // Set inputs
+      // Set inputs — always blank, last session shown as reference above
       let setsHtml = '';
       for (let i = 0; i < ex.target_sets; i++) {
-        const prefill = lastSession ? lastSession.reps[i] || '' : '';
         setsHtml += `
           <div class="input-group">
             <label>Set ${i + 1}</label>
-            <input type="number" min="1" id="rep-${ex.id}-${i}" placeholder="${ex.rep_range_low}-${ex.rep_range_high}" value="${prefill}">
+            <input type="number" min="1" id="rep-${ex.id}-${i}" placeholder="${ex.rep_range_low}-${ex.rep_range_high}">
           </div>
         `;
       }
 
-      // Weight input
+      // Weight input — always blank
       let weightHtml = '';
       if (!ex.is_bodyweight) {
-        const prefillWeight = lastSession && lastSession.weight !== null ? lastSession.weight : '';
         weightHtml = `
           <div class="input-group weight-group">
             <label>Weight</label>
-            <input type="number" min="0" step="0.5" id="weight-${ex.id}" placeholder="${ex.starting_weight || 0}" value="${prefillWeight}">
+            <input type="number" min="0" step="0.5" id="weight-${ex.id}" placeholder="${ex.starting_weight || 0}">
           </div>
         `;
       }
