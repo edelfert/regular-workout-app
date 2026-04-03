@@ -1,19 +1,38 @@
 /**
  * Client-side data layer backed by localStorage.
- * Drop-in replacement for the SQLite backend — same data model, all in the browser.
+ * All data persists in the browser under a single JSON key.
  */
 // eslint-disable-next-line no-var
 var DB = (() => {
   const STORAGE_KEY = 'workout_tracker_db';
 
+  const EMPTY_DB = { workout_days: [], exercises: [], sessions: [], _nextId: { days: 1, exercises: 1, sessions: 1 } };
+
   function load() {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-    return { workout_days: [], exercises: [], sessions: [], _nextId: { days: 1, exercises: 1, sessions: 1 } };
+    if (!raw) return JSON.parse(JSON.stringify(EMPTY_DB));
+    try {
+      const data = JSON.parse(raw);
+      // Basic shape validation
+      if (!data || !Array.isArray(data.workout_days) || !Array.isArray(data.exercises) || !Array.isArray(data.sessions) || !data._nextId) {
+        console.warn('Workout DB: corrupt data detected, resetting.');
+        localStorage.removeItem(STORAGE_KEY);
+        return JSON.parse(JSON.stringify(EMPTY_DB));
+      }
+      return data;
+    } catch (e) {
+      console.warn('Workout DB: JSON parse failed, resetting.', e);
+      localStorage.removeItem(STORAGE_KEY);
+      return JSON.parse(JSON.stringify(EMPTY_DB));
+    }
   }
 
   function save(data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      throw new Error('Failed to save data. Storage may be full.');
+    }
   }
 
   function isSeeded() {
@@ -125,7 +144,7 @@ var DB = (() => {
         rep_range_high: ex.rep_range_high,
         is_bodyweight: !!ex.is_bodyweight,
         is_compound: !!ex.is_compound,
-        starting_weight: ex.starting_weight || null,
+        starting_weight: ex.starting_weight != null ? ex.starting_weight : null, // #3: preserve 0
         sort_order: idx,
       });
     });
@@ -138,12 +157,12 @@ var DB = (() => {
     return load().exercises.filter(e => e.day_id === dayId).sort((a, b) => a.sort_order - b.sort_order);
   }
 
-  function getExerciseById(id) {
-    return load().exercises.find(e => e.id === id) || null;
-  }
-
   function addExercise(dayId, ex) {
     const data = load();
+    // #8: verify day exists
+    if (!data.workout_days.some(d => d.id === dayId)) {
+      throw new Error('Workout day not found');
+    }
     const existing = data.exercises.filter(e => e.day_id === dayId);
     const maxOrder = existing.reduce((m, e) => Math.max(m, e.sort_order), -1);
     const exId = data._nextId.exercises++;
@@ -156,7 +175,7 @@ var DB = (() => {
       rep_range_high: ex.rep_range_high,
       is_bodyweight: !!ex.is_bodyweight,
       is_compound: !!ex.is_compound,
-      starting_weight: ex.starting_weight || null,
+      starting_weight: ex.starting_weight != null ? ex.starting_weight : null, // #3: preserve 0
       sort_order: maxOrder + 1,
     };
     data.exercises.push(record);
@@ -169,20 +188,26 @@ var DB = (() => {
     const exercise = data.exercises.find(e => e.id === exerciseId);
     if (!exercise) throw new Error('Exercise not found');
 
+    // #7: validate reps length matches target sets
+    if (reps.length !== exercise.target_sets) {
+      throw new Error(`Expected ${exercise.target_sets} sets but got ${reps.length}`);
+    }
+
     const duplicate = data.sessions.find(s => s.exercise_id === exerciseId && s.date === date);
     if (duplicate) throw new Error('Session already logged for this exercise on this date. Delete it first or choose a different date.');
 
+    const normalizedWeight = exercise.is_bodyweight ? null : weight; // #4: normalize before storing and computing
     const sessId = data._nextId.sessions++;
     data.sessions.push({
       id: sessId,
       exercise_id: exerciseId,
       date,
-      weight: exercise.is_bodyweight ? null : weight,
+      weight: normalizedWeight,
       reps,
     });
     save(data);
 
-    return { id: sessId, suggestion: computeSuggestion(exercise, weight, reps) };
+    return { id: sessId, suggestion: computeSuggestion(exercise, normalizedWeight, reps) };
   }
 
   function deleteSession(id) {
@@ -191,6 +216,15 @@ var DB = (() => {
     if (idx === -1) throw new Error('Session not found');
     data.sessions.splice(idx, 1);
     save(data);
+  }
+
+  // #13: lightweight last-session lookup without full progress computation
+  function getLastSession(exerciseId) {
+    const data = load();
+    const sessions = data.sessions
+      .filter(s => s.exercise_id === exerciseId)
+      .sort((a, b) => b.date.localeCompare(a.date)); // newest first
+    return sessions.length > 0 ? sessions[0] : null;
   }
 
   function getProgress(exerciseId) {
@@ -242,6 +276,8 @@ var DB = (() => {
       return { action: 'increase', newWeight, message: `Next session: try ${newWeight} lbs (+${increment})` };
     } else if (anyBelowBottom) {
       const dropped = Math.round((currentWeight * 0.95) * 2) / 2;
+      // #14: When weight is very low (e.g. 0 or 2.5), dropped may equal currentWeight.
+      // In that case we fall through to the hold suggestion, which is correct.
       if (dropped < currentWeight) {
         return { action: 'drop', newWeight: dropped, message: `Some sets below ${exercise.rep_range_low} reps. Consider dropping to ${dropped} lbs (-5%) or staying at ${currentWeight} lbs.` };
       }
@@ -261,10 +297,10 @@ var DB = (() => {
     getDays,
     createDay,
     getExercises,
-    getExerciseById,
     addExercise,
     logSession,
     deleteSession,
+    getLastSession,
     getProgress,
     computeSuggestion,
     resetDatabase,

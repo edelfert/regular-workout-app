@@ -16,12 +16,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 
   <!-- Toast container -->
-  <div id="toast-container"></div>
+  <div id="toast-container" role="alert" aria-live="polite"></div>
 
   <header>
     <div class="header-brand">
@@ -29,15 +29,15 @@
       <h1>Workout Tracker</h1>
     </div>
     <nav>
-      <button id="nav-dashboard" class="nav-btn active" onclick="showView('dashboard')">
+      <button id="nav-dashboard" class="nav-btn active" onclick="showView('dashboard')" aria-label="Dashboard view">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         Dashboard
       </button>
-      <button id="nav-progress" class="nav-btn" onclick="showView('progress')">
+      <button id="nav-progress" class="nav-btn" onclick="showView('progress')" aria-label="Progress view">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         Progress
       </button>
-      <button id="nav-manage" class="nav-btn" onclick="showView('manage')">
+      <button id="nav-manage" class="nav-btn" onclick="showView('manage')" aria-label="Manage program">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
         Manage
       </button>
@@ -154,7 +154,7 @@
     </div>
   </main>
 
-  <script src="db.js?v=2"></script>
-  <script src="app.js?v=2"></script>
+  <script src="db.js?v=3"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

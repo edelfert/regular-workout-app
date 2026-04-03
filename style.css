@@ -40,7 +40,7 @@ body {
   color: var(--text-primary);
   max-width: 640px;
   margin: 0 auto;
-  padding: 0 16px 80px;
+  padding: 0 16px 32px;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
 }
@@ -356,9 +356,13 @@ nav {
 
 .inline-error {
   color: var(--red);
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
   font-size: 0.78rem;
   font-weight: 500;
-  margin-top: 2px;
+  margin-top: 6px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -827,7 +831,7 @@ nav {
 /* ---- Responsive ---- */
 
 @media (max-width: 600px) {
-  body { padding: 0 12px 80px; }
+  body { padding: 0 12px 32px; }
 
   header {
     margin: 0 -12px;

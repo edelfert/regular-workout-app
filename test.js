@@ -224,6 +224,15 @@ describe('Manage: Add Exercise & Day', () => {
     assert.strictEqual(after[after.length - 1].name, 'Face Pulls');
   });
 
+  it('addExercise throws for non-existent day', () => {
+    assert.throws(
+      () => DB.addExercise(9999, {
+        name: 'Test', target_sets: 3, rep_range_low: 8, rep_range_high: 12,
+      }),
+      /not found/
+    );
+  });
+
   it('createDay adds a new workout day', () => {
     const before = DB.getDays();
     DB.createDay('Day 5 — Arms', [
@@ -241,5 +250,64 @@ describe('Manage: Add Exercise & Day', () => {
     assert.strictEqual(DB.getDays().length, 5);
     DB.resetDatabase();
     assert.strictEqual(DB.getDays().length, 4);
+  });
+});
+
+describe('getLastSession', () => {
+
+  beforeEach(() => { resetAndSeed(); });
+
+  it('returns the most recent session for an exercise', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+    // Seed has a historical session; log another
+    DB.logSession(ex.id, '2025-04-10', ex.starting_weight, [10, 10, 10]);
+    const last = DB.getLastSession(ex.id);
+    assert.strictEqual(last.date, '2025-04-10');
+  });
+
+  it('returns null when no sessions exist', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[1].id); // Day 2 has no seed sessions
+    const last = DB.getLastSession(exercises[0].id);
+    assert.strictEqual(last, null);
+  });
+});
+
+describe('Validation', () => {
+
+  beforeEach(() => { resetAndSeed(); });
+
+  it('logSession rejects wrong number of sets', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight); // target_sets: 3
+    assert.throws(
+      () => DB.logSession(ex.id, '2025-05-01', ex.starting_weight, [10, 10]),
+      /Expected 3 sets but got 2/
+    );
+  });
+
+  it('recovers from corrupt localStorage data', () => {
+    localStorage.setItem('workout_tracker_db', 'not valid json!!!');
+    // Should not throw — falls back to empty DB
+    const days = DB.getDays();
+    assert.strictEqual(days.length, 0);
+  });
+
+  it('recovers from malformed localStorage object', () => {
+    localStorage.setItem('workout_tracker_db', JSON.stringify({ bad: true }));
+    const days = DB.getDays();
+    assert.strictEqual(days.length, 0);
+  });
+
+  it('preserves starting_weight of 0', () => {
+    const days = DB.getDays();
+    const added = DB.addExercise(days[0].id, {
+      name: 'Zero Weight Ex', target_sets: 3, rep_range_low: 8, rep_range_high: 12,
+      is_bodyweight: false, is_compound: false, starting_weight: 0,
+    });
+    assert.strictEqual(added.starting_weight, 0);
   });
 });

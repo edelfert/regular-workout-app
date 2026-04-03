@@ -6,6 +6,29 @@ let days = [];
 let currentDayId = null;
 let progressChart = null;
 
+// --- Helpers ---
+
+// #1: Escape HTML to prevent XSS from user-supplied names
+function esc(str) {
+  const el = document.createElement('span');
+  el.textContent = str;
+  return el.innerHTML;
+}
+
+// #10: Get today's date in local timezone as YYYY-MM-DD
+function getLocalDateStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 // --- Toast Notifications ---
 
 function showToast(message, type) {
@@ -46,6 +69,11 @@ function loadDashboard() {
   try {
     days = DB.getDays();
 
+    // #6: If currentDayId is set but no longer exists in days, reset it
+    if (currentDayId && !days.some(d => d.id === currentDayId)) {
+      currentDayId = null;
+    }
+
     tabsEl.innerHTML = '';
     days.forEach(day => {
       const btn = document.createElement('button');
@@ -74,13 +102,13 @@ function getDayRotation() {
   // Map day-of-week to workout day index (0-based)
   // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
   const weekdayToDay = {
-    0: 0, // Sunday  → Day 1 (fallback/rest, same as Monday)
-    1: 0, // Monday  → Day 1
-    2: 1, // Tuesday → Day 2
-    3: 1, // Wednesday → Day 2
-    4: 1, // Thursday  → Day 2
-    5: 2, // Friday  → Day 3
-    6: 3, // Saturday → Day 4
+    0: 0, // Sunday  -> Day 1 (fallback/rest, same as Monday)
+    1: 0, // Monday  -> Day 1
+    2: 1, // Tuesday -> Day 2
+    3: 1, // Wednesday -> Day 2
+    4: 1, // Thursday  -> Day 2
+    5: 2, // Friday  -> Day 3
+    6: 3, // Saturday -> Day 4
   };
   const dow = new Date().getDay();
   const idx = weekdayToDay[dow] ?? 0;
@@ -93,16 +121,6 @@ function selectDay(dayId) {
     btn.classList.toggle('active', days[i] && days[i].id === dayId);
   });
   loadExercises(dayId);
-}
-
-function getLastSession(exerciseId) {
-  try {
-    const progress = DB.getProgress(exerciseId);
-    if (progress.sessions.length > 0) {
-      return progress.sessions[progress.sessions.length - 1];
-    }
-  } catch (_) { /* ignore */ }
-  return null;
 }
 
 function loadExercises(dayId) {
@@ -125,7 +143,8 @@ function loadExercises(dayId) {
       card.id = `exercise-${ex.id}`;
       card.style.animationDelay = `${index * 0.05}s`;
 
-      const lastSession = getLastSession(ex.id);
+      // #13: Use lightweight DB.getLastSession instead of full getProgress
+      const lastSession = DB.getLastSession(ex.id);
 
       // Badge
       let badgeHtml = '';
@@ -141,6 +160,7 @@ function loadExercises(dayId) {
       let lastHtml = '';
       if (lastSession) {
         const weightStr = lastSession.weight !== null ? `${lastSession.weight} lbs` : 'Bodyweight';
+        // #1: esc() not needed here since weightStr/reps are numbers, but lastSession.date is controlled
         lastHtml = `<div class="last-session-info">Last: ${weightStr} \u2014 ${lastSession.reps.join(', ')} reps on ${formatDate(lastSession.date)}</div>`;
       }
 
@@ -161,19 +181,23 @@ function loadExercises(dayId) {
         weightHtml = `
           <div class="input-group weight-group">
             <label>Weight</label>
-            <input type="number" min="0" step="0.5" id="weight-${ex.id}" placeholder="${ex.starting_weight || 0}">
+            <input type="number" min="0" step="0.5" id="weight-${ex.id}" placeholder="${ex.starting_weight != null ? ex.starting_weight : 0}">
           </div>
         `;
       }
 
+      // #9: Show starting weight even when it's 0
+      const startWeightLabel = ex.starting_weight != null ? `<span>Start: ${ex.starting_weight} lbs</span>` : '';
+
+      // #1: Escape exercise name to prevent XSS
       card.innerHTML = `
         <div class="exercise-card-header">
-          <h3>${ex.name}</h3>
+          <h3>${esc(ex.name)}</h3>
           ${badgeHtml}
         </div>
         <div class="exercise-meta">
           <span>${ex.target_sets} sets \u00d7 ${ex.rep_range_low}\u2013${ex.rep_range_high} reps</span>
-          ${ex.starting_weight ? `<span>Start: ${ex.starting_weight} lbs</span>` : ''}
+          ${startWeightLabel}
         </div>
         ${lastHtml}
         <div class="input-row">
@@ -197,6 +221,12 @@ function loadExercises(dayId) {
 function logWorkout(exerciseId, targetSets, isBodyweight) {
   const errorEl = document.getElementById(`error-${exerciseId}`);
   const suggestionEl = document.getElementById(`suggestion-${exerciseId}`);
+  const btn = document.querySelector(`#exercise-${exerciseId} .log-btn`);
+
+  // #5: Disable button immediately to prevent double submit
+  if (btn.disabled) return;
+  btn.disabled = true;
+
   errorEl.style.display = 'none';
   suggestionEl.style.display = 'none';
 
@@ -237,17 +267,17 @@ function logWorkout(exerciseId, targetSets, isBodyweight) {
   if (!valid) {
     errorEl.textContent = 'Fill in all fields. Reps must be at least 1' + (isBodyweight ? '.' : ', weight at least 0.');
     errorEl.style.display = 'block';
+    btn.disabled = false; // Re-enable on validation failure
     return;
   }
 
-  const today = new Date().toISOString().split('T')[0];
+  // #10: Use local date, not UTC
+  const today = getLocalDateStr();
 
   try {
     const result = DB.logSession(exerciseId, today, weight, reps);
 
-    const btn = document.querySelector(`#exercise-${exerciseId} .log-btn`);
     btn.textContent = 'Logged \u2713';
-    btn.disabled = true;
     showToast('Workout logged!', 'success');
 
     setTimeout(() => { btn.disabled = false; btn.textContent = 'Log Workout'; }, 2500);
@@ -264,6 +294,7 @@ function logWorkout(exerciseId, targetSets, isBodyweight) {
     errorEl.textContent = err.message;
     errorEl.style.display = 'block';
     showToast(err.message, 'error');
+    btn.disabled = false; // Re-enable on error
   }
 }
 
@@ -278,12 +309,18 @@ function loadProgressSelects() {
 
     daySelect.innerHTML = '<option value="">Select a day...</option>';
     days.forEach(d => {
-      daySelect.innerHTML += `<option value="${d.id}">${d.name}</option>`;
+      // #1: Escape day name in option
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = d.name;
+      daySelect.appendChild(opt);
     });
 
     daySelect.onchange = () => {
       const dayId = parseInt(daySelect.value, 10);
       exSelect.innerHTML = '<option value="">Select an exercise...</option>';
+      // #11: Destroy chart when changing day to free memory
+      if (progressChart) { progressChart.destroy(); progressChart = null; }
       document.getElementById('progress-chart-container').style.display = 'none';
       document.getElementById('progress-suggestion').style.display = 'none';
       document.getElementById('progress-history').style.display = 'none';
@@ -291,7 +328,11 @@ function loadProgressSelects() {
       if (!dayId) return;
       const exercises = DB.getExercises(dayId);
       exercises.forEach(ex => {
-        exSelect.innerHTML += `<option value="${ex.id}">${ex.name}</option>`;
+        // #1: Escape exercise name in option
+        const opt = document.createElement('option');
+        opt.value = ex.id;
+        opt.textContent = ex.name;
+        exSelect.appendChild(opt);
       });
     };
 
@@ -357,11 +398,6 @@ function loadProgress(exerciseId) {
     errorEl.textContent = 'Failed to load progress: ' + err.message;
     errorEl.style.display = 'block';
   }
-}
-
-function formatDate(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function renderChart(data) {
@@ -492,7 +528,11 @@ function loadManageSelects() {
     if (days.length === 0) days = DB.getDays();
     select.innerHTML = '<option value="">Select...</option>';
     days.forEach(d => {
-      select.innerHTML += `<option value="${d.id}">${d.name}</option>`;
+      // #1: Escape day name
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = d.name;
+      select.appendChild(opt);
     });
   } catch (err) {
     document.getElementById('add-ex-error').textContent = 'Failed to load days: ' + err.message;
@@ -513,7 +553,8 @@ document.getElementById('add-exercise-form').addEventListener('submit', (e) => {
   const rep_range_high = parseInt(document.getElementById('add-ex-high').value, 10);
   const is_bodyweight = document.getElementById('add-ex-bw').checked;
   const is_compound = document.getElementById('add-ex-compound').checked;
-  const starting_weight = parseFloat(document.getElementById('add-ex-weight').value) || null;
+  const weightVal = document.getElementById('add-ex-weight').value;
+  const starting_weight = weightVal !== '' ? parseFloat(weightVal) : null; // #3: preserve 0
 
   if (!dayId) { errorEl.textContent = 'Please select a day.'; errorEl.style.display = 'block'; return; }
   if (!name) { errorEl.textContent = 'Exercise name is required.'; errorEl.style.display = 'block'; return; }
@@ -540,6 +581,7 @@ function addNewDayExerciseRow() {
   const row = document.createElement('div');
   row.className = 'new-day-exercise-row';
   row.id = `new-day-ex-${newDayExCounter}`;
+  // #15: Use data-role attribute on weight input instead of positional index
   row.innerHTML = `
     <input type="text" placeholder="Exercise name" required>
     <input type="number" placeholder="Sets" value="3" min="1" style="width:50px" required>
@@ -547,7 +589,7 @@ function addNewDayExerciseRow() {
     <input type="number" placeholder="High" min="1" style="width:50px" required>
     <label class="checkbox-label"><input type="checkbox" class="ndex-bw"> BW</label>
     <label class="checkbox-label"><input type="checkbox" class="ndex-compound"> Compound</label>
-    <input type="number" placeholder="Weight" step="0.5" min="0" style="width:60px">
+    <input type="number" placeholder="Weight" step="0.5" min="0" style="width:60px" data-role="weight">
     <button type="button" class="remove-ex-btn" onclick="this.parentElement.remove()">\u00d7</button>
   `;
   list.appendChild(row);
@@ -577,7 +619,10 @@ document.getElementById('add-day-form').addEventListener('submit', (e) => {
     const high = parseInt(inputs[3].value, 10);
     const isBw = row.querySelector('.ndex-bw').checked;
     const isCompound = row.querySelector('.ndex-compound').checked;
-    const weight = parseFloat(inputs[6].value) || null;
+    // #15: Use data-role selector instead of positional index
+    const weightInput = row.querySelector('[data-role="weight"]');
+    const weightVal = weightInput ? weightInput.value : '';
+    const weight = weightVal !== '' ? parseFloat(weightVal) : null; // #3: preserve 0
 
     if (!exName) { errorEl.textContent = 'All exercises must have a name.'; errorEl.style.display = 'block'; return; }
     if (isNaN(sets) || sets < 1) { errorEl.textContent = `Invalid sets for "${exName}".`; errorEl.style.display = 'block'; return; }
