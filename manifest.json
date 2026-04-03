@@ -1,12 +1,13 @@
 {
   "name": "Workout Tracker",
   "short_name": "Workout",
-  "start_url": ".",
-  "scope": ".",
-  "id": ".",
+  "description": "Track workouts with progressive overload suggestions",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0a0c14",
   "theme_color": "#0a0c14",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "favicon-48.png",

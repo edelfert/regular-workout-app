@@ -1,22 +1,27 @@
-const CACHE_NAME = 'workout-v5';
-const ASSETS = [
-  './',
-  './index.html',
-  './style.css?v=5',
-  './db.js?v=5',
-  './app.js?v=5',
-  './manifest.json',
-  './favicon.png',
-  './favicon-48.png',
-  './icon-180.png',
-  './icon-192.png',
-  './icon-512.png',
-];
+const CACHE_NAME = 'workout-v6';
 
-// Pre-cache app shell on install
+// Pre-cache core app shell on install — use individual try/catch so
+// one missing file doesn't break the entire install.
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then(async cache => {
+      const urls = [
+        './',
+        './index.html',
+        './style.css',
+        './db.js',
+        './app.js',
+        './manifest.json',
+        './favicon.png',
+        './favicon-48.png',
+        './icon-180.png',
+        './icon-192.png',
+        './icon-512.png',
+      ];
+      for (const url of urls) {
+        try { await cache.add(url); } catch (err) { console.warn('SW: failed to cache', url, err); }
+      }
+    })
   );
   self.skipWaiting();
 });
@@ -31,23 +36,20 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
-// Network-first for HTML, cache-first for assets
+// Stale-while-revalidate for same-origin GET requests
 self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
-
   // Skip non-GET and cross-origin (CDN fonts, Chart.js)
-  if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  if (e.request.method !== 'GET') return;
+  if (new URL(e.request.url).origin !== location.origin) return;
 
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      const fetchPromise = fetch(e.request).then(response => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-        }
+    caches.open(CACHE_NAME).then(async cache => {
+      const cached = await cache.match(e.request);
+      const fetched = fetch(e.request).then(response => {
+        if (response.ok) cache.put(e.request, response.clone());
         return response;
       }).catch(() => cached);
-      return cached || fetchPromise;
+      return cached || fetched;
     })
   );
 });
