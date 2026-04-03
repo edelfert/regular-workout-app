@@ -4,11 +4,7 @@ A static, single-user workout tracking app built around a 4-day push/pull split.
 
 ## Live Demo
 
-Enable GitHub Pages (Settings > Pages > Source: Deploy from branch `main`, root `/`) and visit:
-
-```
-https://<your-username>.github.io/regular-workout-app/
-```
+https://edelfert.github.io/regular-workout-app/
 
 Or open `index.html` directly in a browser for local use.
 
