@@ -3,17 +3,38 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0c14">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Workout Tracker</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+  <!-- Toast container -->
+  <div id="toast-container"></div>
+
   <header>
-    <h1>Workout Tracker</h1>
+    <div class="header-brand">
+      <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5h11"/><path d="M6.5 17.5h11"/><rect x="2" y="8" width="4" height="8" rx="1"/><rect x="18" y="8" width="4" height="8" rx="1"/><rect x="9" y="5" width="2" height="14" rx=".5"/><rect x="13" y="5" width="2" height="14" rx=".5"/></svg>
+      <h1>Workout Tracker</h1>
+    </div>
     <nav>
-      <button id="nav-dashboard" class="nav-btn active" onclick="showView('dashboard')">Dashboard</button>
-      <button id="nav-progress" class="nav-btn" onclick="showView('progress')">Progress</button>
-      <button id="nav-manage" class="nav-btn" onclick="showView('manage')">Manage</button>
+      <button id="nav-dashboard" class="nav-btn active" onclick="showView('dashboard')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Dashboard
+      </button>
+      <button id="nav-progress" class="nav-btn" onclick="showView('progress')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Progress
+      </button>
+      <button id="nav-manage" class="nav-btn" onclick="showView('manage')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        Manage
+      </button>
     </nav>
   </header>
 
@@ -27,10 +48,17 @@
 
     <!-- Progress View -->
     <div id="view-progress" class="view" style="display:none;">
-      <h2>Exercise Progress</h2>
+      <div class="view-header">
+        <h2>Exercise Progress</h2>
+        <p class="view-subtitle">Track your strength gains over time</p>
+      </div>
       <div class="progress-controls">
-        <select id="progress-day-select"><option value="">Select a day...</option></select>
-        <select id="progress-exercise-select"><option value="">Select an exercise...</option></select>
+        <div class="select-wrapper">
+          <select id="progress-day-select"><option value="">Select a day...</option></select>
+        </div>
+        <div class="select-wrapper">
+          <select id="progress-exercise-select"><option value="">Select an exercise...</option></select>
+        </div>
       </div>
       <div id="error-progress" class="error-msg" style="display:none;"></div>
       <div id="progress-chart-container" style="display:none;">
@@ -38,54 +66,84 @@
       </div>
       <div id="progress-suggestion" class="suggestion-box" style="display:none;"></div>
       <div id="progress-history" style="display:none;">
-        <h3>Session History</h3>
-        <table id="progress-table">
-          <thead><tr><th>Date</th><th>Weight</th><th>Reps</th><th>Avg Reps</th><th></th></tr></thead>
-          <tbody></tbody>
-        </table>
+        <h3 class="section-title">Session History</h3>
+        <div class="table-wrapper">
+          <table id="progress-table">
+            <thead><tr><th>Date</th><th>Weight</th><th>Reps</th><th>Avg</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
     <!-- Manage View -->
     <div id="view-manage" class="view" style="display:none;">
-      <h2>Manage Exercises &amp; Days</h2>
+      <div class="view-header">
+        <h2>Manage Program</h2>
+        <p class="view-subtitle">Customize your workout days and exercises</p>
+      </div>
 
       <section class="manage-section">
-        <h3>Add Exercise to Existing Day</h3>
+        <h3 class="section-title">Add Exercise to Existing Day</h3>
         <form id="add-exercise-form" class="manage-form">
-          <label>Day:
-            <select id="add-ex-day" required><option value="">Select...</option></select>
-          </label>
-          <label>Name: <input type="text" id="add-ex-name" required></label>
-          <label>Target Sets: <input type="number" id="add-ex-sets" value="3" min="1" required></label>
-          <label>Rep Range Low: <input type="number" id="add-ex-low" min="1" required></label>
-          <label>Rep Range High: <input type="number" id="add-ex-high" min="1" required></label>
-          <label><input type="checkbox" id="add-ex-bw"> Bodyweight</label>
-          <label><input type="checkbox" id="add-ex-compound"> Compound</label>
-          <label>Starting Weight (lbs): <input type="number" id="add-ex-weight" step="0.5" min="0"></label>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="add-ex-day">Workout Day</label>
+              <div class="select-wrapper">
+                <select id="add-ex-day" required><option value="">Select...</option></select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="add-ex-name">Exercise Name</label>
+              <input type="text" id="add-ex-name" placeholder="e.g. Face Pulls" required>
+            </div>
+            <div class="form-group">
+              <label for="add-ex-sets">Target Sets</label>
+              <input type="number" id="add-ex-sets" value="3" min="1" required>
+            </div>
+            <div class="form-group">
+              <label for="add-ex-low">Rep Range Low</label>
+              <input type="number" id="add-ex-low" min="1" placeholder="8" required>
+            </div>
+            <div class="form-group">
+              <label for="add-ex-high">Rep Range High</label>
+              <input type="number" id="add-ex-high" min="1" placeholder="12" required>
+            </div>
+            <div class="form-group">
+              <label for="add-ex-weight">Starting Weight (lbs)</label>
+              <input type="number" id="add-ex-weight" step="0.5" min="0" placeholder="0">
+            </div>
+            <div class="form-group form-group-row">
+              <label class="checkbox-label"><input type="checkbox" id="add-ex-bw"> Bodyweight</label>
+              <label class="checkbox-label"><input type="checkbox" id="add-ex-compound"> Compound</label>
+            </div>
+          </div>
           <div id="add-ex-error" class="error-msg" style="display:none;"></div>
-          <button type="submit">Add Exercise</button>
+          <button type="submit" class="btn btn-primary">Add Exercise</button>
         </form>
       </section>
 
       <section class="manage-section">
-        <h3>Add New Workout Day</h3>
+        <h3 class="section-title">Add New Workout Day</h3>
         <form id="add-day-form" class="manage-form">
-          <label>Day Name: <input type="text" id="add-day-name" required placeholder="e.g. Day 5 — Arms"></label>
+          <div class="form-group">
+            <label for="add-day-name">Day Name</label>
+            <input type="text" id="add-day-name" required placeholder="e.g. Day 5 — Arms">
+          </div>
           <div id="new-day-exercises">
-            <h4>Exercises</h4>
+            <label class="section-label">Exercises</label>
             <div id="new-day-ex-list"></div>
-            <button type="button" id="add-day-ex-btn" class="btn-secondary">+ Add Exercise</button>
+            <button type="button" id="add-day-ex-btn" class="btn btn-ghost">+ Add Exercise</button>
           </div>
           <div id="add-day-error" class="error-msg" style="display:none;"></div>
-          <button type="submit">Create Day</button>
+          <button type="submit" class="btn btn-primary">Create Day</button>
         </form>
       </section>
 
       <section class="manage-section danger-section">
-        <h3>Reset Database</h3>
-        <p>This will delete all your data and re-seed with the default 4-day routine.</p>
-        <button type="button" id="reset-db-btn" class="btn-danger">Reset All Data</button>
+        <h3 class="section-title">Danger Zone</h3>
+        <p>Reset all data and re-seed with the default 4-day routine. This cannot be undone.</p>
+        <button type="button" id="reset-db-btn" class="btn btn-danger">Reset All Data</button>
       </section>
     </div>
   </main>

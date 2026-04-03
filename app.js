@@ -6,6 +6,20 @@ let days = [];
 let currentDayId = null;
 let progressChart = null;
 
+// --- Toast Notifications ---
+
+function showToast(message, type) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('toast-out');
+    toast.addEventListener('animationend', () => toast.remove());
+  }, 2500);
+}
+
 // --- View switching ---
 
 function showView(view) {
@@ -32,7 +46,6 @@ function loadDashboard() {
   try {
     days = DB.getDays();
 
-    // Render day tabs
     tabsEl.innerHTML = '';
     days.forEach(day => {
       const btn = document.createElement('button');
@@ -58,7 +71,7 @@ function loadDashboard() {
 }
 
 function getDayRotation() {
-  const ref = new Date('2025-03-30'); // Day 1 reference date
+  const ref = new Date('2025-03-30');
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diff = Math.floor((today - ref) / (1000 * 60 * 60 * 24));
@@ -73,6 +86,16 @@ function selectDay(dayId) {
   loadExercises(dayId);
 }
 
+function getLastSession(exerciseId) {
+  try {
+    const progress = DB.getProgress(exerciseId);
+    if (progress.sessions.length > 0) {
+      return progress.sessions[progress.sessions.length - 1];
+    }
+  } catch (_) { /* ignore */ }
+  return null;
+}
+
 function loadExercises(dayId) {
   const listEl = document.getElementById('exercises-list');
   const errorEl = document.getElementById('error-dashboard');
@@ -82,34 +105,75 @@ function loadExercises(dayId) {
   try {
     const exercises = DB.getExercises(dayId);
 
-    exercises.forEach(ex => {
+    if (exercises.length === 0) {
+      listEl.innerHTML = '<div class="empty-state"><p>No exercises on this day yet.<br>Go to Manage to add some.</p></div>';
+      return;
+    }
+
+    exercises.forEach((ex, index) => {
       const card = document.createElement('div');
       card.className = 'exercise-card';
       card.id = `exercise-${ex.id}`;
+      card.style.animationDelay = `${index * 0.05}s`;
 
+      const lastSession = getLastSession(ex.id);
+
+      // Badge
+      let badgeHtml = '';
+      if (ex.is_bodyweight) {
+        badgeHtml = '<span class="exercise-badge badge-bodyweight">Bodyweight</span>';
+      } else if (ex.is_compound) {
+        badgeHtml = '<span class="exercise-badge badge-compound">Compound</span>';
+      } else {
+        badgeHtml = '<span class="exercise-badge badge-isolation">Isolation</span>';
+      }
+
+      // Last session info
+      let lastHtml = '';
+      if (lastSession) {
+        const weightStr = lastSession.weight !== null ? `${lastSession.weight} lbs` : 'Bodyweight';
+        lastHtml = `<div class="last-session-info">Last: ${weightStr} \u2014 ${lastSession.reps.join(', ')} reps on ${lastSession.date}</div>`;
+      }
+
+      // Set inputs
       let setsHtml = '';
       for (let i = 0; i < ex.target_sets; i++) {
+        const prefill = lastSession ? lastSession.reps[i] || '' : '';
         setsHtml += `
-          <div class="set-input-group">
+          <div class="input-group">
             <label>Set ${i + 1}</label>
-            <input type="number" min="1" id="rep-${ex.id}-${i}" placeholder="${ex.rep_range_low}-${ex.rep_range_high}" required>
+            <input type="number" min="1" id="rep-${ex.id}-${i}" placeholder="${ex.rep_range_low}-${ex.rep_range_high}" value="${prefill}">
           </div>
         `;
       }
 
-      const weightHtml = ex.is_bodyweight ? '' : `
-        <div class="weight-input-group">
-          <label>Weight (lbs)</label>
-          <input type="number" min="0" step="0.5" id="weight-${ex.id}" placeholder="${ex.starting_weight || 0}">
-        </div>
-      `;
+      // Weight input
+      let weightHtml = '';
+      if (!ex.is_bodyweight) {
+        const prefillWeight = lastSession && lastSession.weight !== null ? lastSession.weight : '';
+        weightHtml = `
+          <div class="input-group weight-group">
+            <label>Weight</label>
+            <input type="number" min="0" step="0.5" id="weight-${ex.id}" placeholder="${ex.starting_weight || 0}" value="${prefillWeight}">
+          </div>
+        `;
+      }
 
       card.innerHTML = `
-        <h3>${ex.name}${ex.is_bodyweight ? ' <span style="color:#888;font-size:0.8rem;">(bodyweight)</span>' : ''}</h3>
-        <div class="exercise-meta">${ex.target_sets} sets \u00d7 ${ex.rep_range_low}-${ex.rep_range_high} reps${ex.is_compound ? ' \u2022 Compound' : ' \u2022 Isolation'}${ex.starting_weight ? ' \u2022 Starting: ' + ex.starting_weight + ' lbs' : ''}</div>
-        <div class="sets-row">
+        <div class="exercise-card-header">
+          <h3>${ex.name}</h3>
+          ${badgeHtml}
+        </div>
+        <div class="exercise-meta">
+          <span>${ex.target_sets} sets \u00d7 ${ex.rep_range_low}\u2013${ex.rep_range_high} reps</span>
+          ${ex.starting_weight ? `<span>Start: ${ex.starting_weight} lbs</span>` : ''}
+        </div>
+        ${lastHtml}
+        <div class="input-row">
           ${weightHtml}
           ${setsHtml}
+        </div>
+        <div class="card-actions">
           <button class="log-btn" onclick="logWorkout(${ex.id}, ${ex.target_sets}, ${ex.is_bodyweight})">Log Workout</button>
         </div>
         <div id="error-${ex.id}" class="inline-error" style="display:none;"></div>
@@ -138,7 +202,7 @@ function logWorkout(exerciseId, targetSets, isBodyweight) {
     if (wEl) wEl.classList.remove('input-error');
   }
 
-  // Validate inputs
+  // Validate
   const reps = [];
   let valid = true;
 
@@ -164,7 +228,7 @@ function logWorkout(exerciseId, targetSets, isBodyweight) {
   }
 
   if (!valid) {
-    errorEl.textContent = 'Please fill in all fields with valid values. Reps must be \u2265 1' + (isBodyweight ? '.' : ' and weight must be \u2265 0.');
+    errorEl.textContent = 'Fill in all fields. Reps must be at least 1' + (isBodyweight ? '.' : ', weight at least 0.');
     errorEl.style.display = 'block';
     return;
   }
@@ -177,16 +241,22 @@ function logWorkout(exerciseId, targetSets, isBodyweight) {
     const btn = document.querySelector(`#exercise-${exerciseId} .log-btn`);
     btn.textContent = 'Logged \u2713';
     btn.disabled = true;
-    setTimeout(() => { btn.disabled = false; btn.textContent = 'Log Workout'; }, 2000);
+    showToast('Workout logged!', 'success');
+
+    setTimeout(() => { btn.disabled = false; btn.textContent = 'Log Workout'; }, 2500);
 
     if (result.suggestion) {
       suggestionEl.textContent = result.suggestion.message;
-      suggestionEl.className = 'suggestion-box' + (result.suggestion.action === 'drop' ? ' drop' : '');
+      let sugClass = 'suggestion-box';
+      if (result.suggestion.action === 'drop') sugClass += ' drop';
+      else if (result.suggestion.action === 'hold') sugClass += ' hold';
+      suggestionEl.className = sugClass;
       suggestionEl.style.display = 'block';
     }
   } catch (err) {
     errorEl.textContent = err.message;
     errorEl.style.display = 'block';
+    showToast(err.message, 'error');
   }
 }
 
@@ -207,6 +277,10 @@ function loadProgressSelects() {
     daySelect.onchange = () => {
       const dayId = parseInt(daySelect.value, 10);
       exSelect.innerHTML = '<option value="">Select an exercise...</option>';
+      document.getElementById('progress-chart-container').style.display = 'none';
+      document.getElementById('progress-suggestion').style.display = 'none';
+      document.getElementById('progress-history').style.display = 'none';
+      document.getElementById('error-progress').style.display = 'none';
       if (!dayId) return;
       const exercises = DB.getExercises(dayId);
       exercises.forEach(ex => {
@@ -250,7 +324,10 @@ function loadProgress(exerciseId) {
     // Suggestion
     if (data.suggestion) {
       suggestionEl.textContent = data.suggestion.message;
-      suggestionEl.className = 'suggestion-box' + (data.suggestion.action === 'drop' ? ' drop' : '');
+      let sugClass = 'suggestion-box';
+      if (data.suggestion.action === 'drop') sugClass += ' drop';
+      else if (data.suggestion.action === 'hold') sugClass += ' hold';
+      suggestionEl.className = sugClass;
       suggestionEl.style.display = 'block';
     }
 
@@ -261,7 +338,7 @@ function loadProgress(exerciseId) {
     data.sessions.forEach(s => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${s.date}</td>
+        <td>${formatDate(s.date)}</td>
         <td>${s.weight !== null ? s.weight + ' lbs' : 'BW'}</td>
         <td>${s.reps.join(', ')}</td>
         <td>${s.avgReps}</td>
@@ -275,12 +352,16 @@ function loadProgress(exerciseId) {
   }
 }
 
+function formatDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function renderChart(data) {
   const ctx = document.getElementById('progress-chart').getContext('2d');
-
   if (progressChart) progressChart.destroy();
 
-  const labels = data.sessions.map(s => s.date);
+  const labels = data.sessions.map(s => formatDate(s.date));
   const weights = data.sessions.map(s => s.weight);
   const avgReps = data.sessions.map(s => s.avgReps);
   const isBodyweight = data.exercise.is_bodyweight;
@@ -291,61 +372,91 @@ function renderChart(data) {
     datasets.push({
       label: 'Weight (lbs)',
       data: weights,
-      borderColor: '#2d5ff5',
-      backgroundColor: 'rgba(45, 95, 245, 0.1)',
+      borderColor: '#4f6ef7',
+      backgroundColor: 'rgba(79, 110, 247, 0.08)',
       yAxisID: 'y',
-      tension: 0.3,
+      tension: 0.35,
+      fill: true,
       pointRadius: data.sessions.length === 1 ? 6 : 4,
       pointHoverRadius: 7,
+      pointBackgroundColor: '#4f6ef7',
+      borderWidth: 2.5,
     });
   }
 
   datasets.push({
     label: 'Avg Reps',
     data: avgReps,
-    borderColor: '#6fcf6f',
-    backgroundColor: 'rgba(111, 207, 111, 0.1)',
+    borderColor: '#34d399',
+    backgroundColor: 'rgba(52, 211, 153, 0.08)',
     yAxisID: isBodyweight ? 'y' : 'y1',
-    tension: 0.3,
+    tension: 0.35,
+    fill: true,
     pointRadius: data.sessions.length === 1 ? 6 : 4,
     pointHoverRadius: 7,
+    pointBackgroundColor: '#34d399',
+    borderWidth: 2.5,
   });
 
+  const gridColor = 'rgba(30, 34, 53, 0.6)';
   const scales = {};
+
   if (!isBodyweight) {
     scales.y = {
       type: 'linear', position: 'left',
-      title: { display: true, text: 'Weight (lbs)', color: '#888' },
-      ticks: { color: '#888' }, grid: { color: '#2a2d37' },
+      title: { display: true, text: 'Weight (lbs)', color: '#555a70', font: { size: 11, family: 'Inter' } },
+      ticks: { color: '#555a70', font: { size: 11, family: 'Inter' } },
+      grid: { color: gridColor },
+      border: { color: 'transparent' },
     };
     scales.y1 = {
       type: 'linear', position: 'right',
-      title: { display: true, text: 'Avg Reps', color: '#888' },
-      ticks: { color: '#888' }, grid: { drawOnChartArea: false },
+      title: { display: true, text: 'Avg Reps', color: '#555a70', font: { size: 11, family: 'Inter' } },
+      ticks: { color: '#555a70', font: { size: 11, family: 'Inter' } },
+      grid: { drawOnChartArea: false },
+      border: { color: 'transparent' },
     };
   } else {
     scales.y = {
       type: 'linear', position: 'left',
-      title: { display: true, text: 'Avg Reps', color: '#888' },
-      ticks: { color: '#888' }, grid: { color: '#2a2d37' },
+      title: { display: true, text: 'Avg Reps', color: '#555a70', font: { size: 11, family: 'Inter' } },
+      ticks: { color: '#555a70', font: { size: 11, family: 'Inter' } },
+      grid: { color: gridColor },
+      border: { color: 'transparent' },
     };
   }
 
-  scales.x = { ticks: { color: '#888' }, grid: { color: '#2a2d37' } };
+  scales.x = {
+    ticks: { color: '#555a70', font: { size: 11, family: 'Inter' }, maxRotation: 45 },
+    grid: { color: gridColor },
+    border: { color: 'transparent' },
+  };
 
   progressChart = new Chart(ctx, {
     type: 'line',
     data: { labels, datasets },
     options: {
       responsive: true,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { labels: { color: '#e0e0e0' } },
+        legend: {
+          labels: { color: '#8a8fa8', font: { size: 12, family: 'Inter', weight: '500' }, boxWidth: 12, padding: 16 },
+        },
         tooltip: {
+          backgroundColor: '#1a1e2e',
+          titleColor: '#f0f0f5',
+          bodyColor: '#8a8fa8',
+          borderColor: '#1e2235',
+          borderWidth: 1,
+          cornerRadius: 8,
+          padding: 12,
+          titleFont: { family: 'Inter', weight: '600' },
+          bodyFont: { family: 'Inter' },
           callbacks: {
             afterBody: function(context) {
               const idx = context[0].dataIndex;
               const s = data.sessions[idx];
-              return `Reps: [${s.reps.join(', ')}]`;
+              return 'Reps: [' + s.reps.join(', ') + ']';
             }
           }
         }
@@ -360,8 +471,9 @@ function deleteSession(sessionId, exerciseId) {
   try {
     DB.deleteSession(sessionId);
     loadProgress(exerciseId);
+    showToast('Session deleted', 'success');
   } catch (err) {
-    alert('Failed to delete: ' + err.message);
+    showToast('Failed to delete: ' + err.message, 'error');
   }
 }
 
@@ -398,14 +510,15 @@ document.getElementById('add-exercise-form').addEventListener('submit', (e) => {
 
   if (!dayId) { errorEl.textContent = 'Please select a day.'; errorEl.style.display = 'block'; return; }
   if (!name) { errorEl.textContent = 'Exercise name is required.'; errorEl.style.display = 'block'; return; }
-  if (isNaN(target_sets) || target_sets < 1) { errorEl.textContent = 'Target sets must be \u2265 1.'; errorEl.style.display = 'block'; return; }
-  if (isNaN(rep_range_low) || rep_range_low < 1) { errorEl.textContent = 'Rep range low must be \u2265 1.'; errorEl.style.display = 'block'; return; }
-  if (isNaN(rep_range_high) || rep_range_high < rep_range_low) { errorEl.textContent = 'Rep range high must be \u2265 low.'; errorEl.style.display = 'block'; return; }
+  if (isNaN(target_sets) || target_sets < 1) { errorEl.textContent = 'Target sets must be at least 1.'; errorEl.style.display = 'block'; return; }
+  if (isNaN(rep_range_low) || rep_range_low < 1) { errorEl.textContent = 'Rep range low must be at least 1.'; errorEl.style.display = 'block'; return; }
+  if (isNaN(rep_range_high) || rep_range_high < rep_range_low) { errorEl.textContent = 'Rep range high must be at least rep range low.'; errorEl.style.display = 'block'; return; }
 
   try {
     DB.addExercise(dayId, { name, target_sets, rep_range_low, rep_range_high, is_bodyweight, is_compound, starting_weight });
-    alert('Exercise added!');
+    showToast(`"${name}" added!`, 'success');
     e.target.reset();
+    days = [];
   } catch (err) {
     errorEl.textContent = err.message;
     errorEl.style.display = 'block';
@@ -425,8 +538,8 @@ function addNewDayExerciseRow() {
     <input type="number" placeholder="Sets" value="3" min="1" style="width:50px" required>
     <input type="number" placeholder="Low" min="1" style="width:50px" required>
     <input type="number" placeholder="High" min="1" style="width:50px" required>
-    <label style="font-size:0.75rem;color:#888;"><input type="checkbox" class="ndex-bw"> BW</label>
-    <label style="font-size:0.75rem;color:#888;"><input type="checkbox" class="ndex-compound"> Compound</label>
+    <label class="checkbox-label"><input type="checkbox" class="ndex-bw"> BW</label>
+    <label class="checkbox-label"><input type="checkbox" class="ndex-compound"> Compound</label>
     <input type="number" placeholder="Weight" step="0.5" min="0" style="width:60px">
     <button type="button" class="remove-ex-btn" onclick="this.parentElement.remove()">\u00d7</button>
   `;
@@ -469,7 +582,7 @@ document.getElementById('add-day-form').addEventListener('submit', (e) => {
 
   try {
     DB.createDay(name, exercises);
-    alert('Workout day created!');
+    showToast(`"${name}" created!`, 'success');
     days = [];
     e.target.reset();
     document.getElementById('new-day-ex-list').innerHTML = '';
@@ -487,7 +600,7 @@ document.getElementById('reset-db-btn').addEventListener('click', () => {
   days = [];
   currentDayId = null;
   showView('dashboard');
-  alert('Database reset to defaults.');
+  showToast('Database reset to defaults', 'success');
 });
 
 // --- Init ---
