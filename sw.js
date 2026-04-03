@@ -1,10 +1,9 @@
-const CACHE_NAME = 'workout-v6';
+const CACHE_NAME = 'workout-v7';
 
-// Pre-cache core app shell on install — use individual try/catch so
-// one missing file doesn't break the entire install.
+// Pre-cache core app shell on install
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then(async cache => {
+    caches.open(CACHE_NAME).then(async (cache) => {
       const urls = [
         './',
         './index.html',
@@ -19,7 +18,11 @@ self.addEventListener('install', (e) => {
         './icon-512.png',
       ];
       for (const url of urls) {
-        try { await cache.add(url); } catch (err) { console.warn('SW: failed to cache', url, err); }
+        try {
+          await cache.add(url);
+        } catch (err) {
+          console.warn('SW cache skip:', url);
+        }
       }
     })
   );
@@ -29,27 +32,42 @@ self.addEventListener('install', (e) => {
 // Clean old caches on activate
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
 });
 
-// Stale-while-revalidate for same-origin GET requests
+// Respond to ALL fetch events — Firefox Android requires respondWith
+// on navigation requests for PWA install to work.
 self.addEventListener('fetch', (e) => {
-  // Skip non-GET and cross-origin (CDN fonts, Chart.js)
   if (e.request.method !== 'GET') return;
-  if (new URL(e.request.url).origin !== location.origin) return;
 
   e.respondWith(
-    caches.open(CACHE_NAME).then(async cache => {
+    (async () => {
+      // For cross-origin requests (CDN fonts, Chart.js), go network-only
+      if (new URL(e.request.url).origin !== self.location.origin) {
+        return fetch(e.request);
+      }
+
+      // Same-origin: stale-while-revalidate
+      const cache = await caches.open(CACHE_NAME);
       const cached = await cache.match(e.request);
-      const fetched = fetch(e.request).then(response => {
-        if (response.ok) cache.put(e.request, response.clone());
-        return response;
-      }).catch(() => cached);
-      return cached || fetched;
-    })
+      const fetchPromise = fetch(e.request)
+        .then((response) => {
+          if (response.ok) cache.put(e.request, response.clone());
+          return response;
+        })
+        .catch(() => {
+          // Offline — return cached version or a basic fallback
+          if (cached) return cached;
+          // For navigation requests, try returning cached index.html
+          if (e.request.mode === 'navigate') return cache.match('./index.html');
+          return new Response('Offline', { status: 503 });
+        });
+
+      return cached || fetchPromise;
+    })()
   );
 });
