@@ -71,11 +71,20 @@ function loadDashboard() {
 }
 
 function getDayRotation() {
-  const ref = new Date('2025-03-30');
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diff = Math.floor((today - ref) / (1000 * 60 * 60 * 24));
-  return ((diff % days.length) + days.length) % days.length;
+  // Map day-of-week to workout day index (0-based)
+  // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+  const weekdayToDay = {
+    0: 0, // Sunday  → Day 1 (fallback/rest, same as Monday)
+    1: 0, // Monday  → Day 1
+    2: 1, // Tuesday → Day 2
+    3: 1, // Wednesday → Day 2
+    4: 1, // Thursday  → Day 2
+    5: 2, // Friday  → Day 3
+    6: 3, // Saturday → Day 4
+  };
+  const dow = new Date().getDay();
+  const idx = weekdayToDay[dow] ?? 0;
+  return Math.min(idx, days.length - 1);
 }
 
 function selectDay(dayId) {
