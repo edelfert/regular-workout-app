@@ -5,6 +5,8 @@ DB.seed();
 let days = [];
 let currentDayId = null;
 let progressChart = null;
+let progressDayId = null;
+let progressExId = null;
 
 // --- Helpers ---
 
@@ -26,6 +28,7 @@ function getLocalDateStr() {
 
 function formatDate(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return dateStr; // fallback for corrupt dates
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
@@ -33,6 +36,10 @@ function formatDate(dateStr) {
 
 function showToast(message, type) {
   const container = document.getElementById('toast-container');
+  // Cap visible toasts at 3 — remove oldest if needed
+  while (container.children.length >= 3) {
+    container.firstChild.remove();
+  }
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
   toast.textContent = message;
@@ -40,6 +47,8 @@ function showToast(message, type) {
   setTimeout(() => {
     toast.classList.add('toast-out');
     toast.addEventListener('animationend', () => toast.remove());
+    // Fallback removal if CSS animations are disabled (prefers-reduced-motion)
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 400);
   }, 2500);
 }
 
@@ -74,22 +83,21 @@ function loadDashboard() {
       currentDayId = null;
     }
 
+    // Set currentDayId before building tabs to avoid visual flash
+    if (!currentDayId && days.length > 0) {
+      const todayIndex = getDayRotation();
+      currentDayId = days[todayIndex] ? days[todayIndex].id : days[0].id;
+    }
+
     tabsEl.innerHTML = '';
     days.forEach(day => {
       const btn = document.createElement('button');
       btn.className = 'day-tab' + (day.id === currentDayId ? ' active' : '');
       btn.textContent = day.name;
+      btn.dataset.dayId = day.id;
       btn.onclick = () => selectDay(day.id);
       tabsEl.appendChild(btn);
     });
-
-    if (!currentDayId && days.length > 0) {
-      const todayIndex = getDayRotation();
-      currentDayId = days[todayIndex] ? days[todayIndex].id : days[0].id;
-      tabsEl.querySelectorAll('.day-tab').forEach((btn, i) => {
-        if (days[i].id === currentDayId) btn.classList.add('active');
-      });
-    }
 
     if (currentDayId) loadExercises(currentDayId);
   } catch (err) {
@@ -117,11 +125,13 @@ function getDayRotation() {
 
 function selectDay(dayId) {
   currentDayId = dayId;
-  document.querySelectorAll('.day-tab').forEach((btn, i) => {
-    btn.classList.toggle('active', days[i] && days[i].id === dayId);
+  document.querySelectorAll('.day-tab').forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.dayId, 10) === dayId);
   });
   loadExercises(dayId);
 }
+
+let dashboardInitialized = false;
 
 function loadExercises(dayId) {
   const listEl = document.getElementById('exercises-list');
@@ -137,11 +147,16 @@ function loadExercises(dayId) {
       return;
     }
 
+    // Only animate on first dashboard load, not tab switches
+    const animate = !dashboardInitialized;
+    dashboardInitialized = true;
+
     exercises.forEach((ex, index) => {
       const card = document.createElement('div');
       card.className = 'exercise-card';
       card.id = `exercise-${ex.id}`;
-      card.style.animationDelay = `${index * 0.05}s`;
+      if (animate) card.style.animationDelay = `${index * 0.05}s`;
+      else card.style.animation = 'none';
 
       // #13: Use lightweight DB.getLastSession instead of full getProgress
       const lastSession = DB.getLastSession(ex.id);
@@ -160,8 +175,9 @@ function loadExercises(dayId) {
       let lastHtml = '';
       if (lastSession) {
         const weightStr = lastSession.weight !== null ? `${lastSession.weight} lbs` : 'Bodyweight';
-        // #1: esc() not needed here since weightStr/reps are numbers, but lastSession.date is controlled
-        lastHtml = `<div class="last-session-info">Last: ${weightStr} \u2014 ${lastSession.reps.join(', ')} reps on ${formatDate(lastSession.date)}</div>`;
+        lastHtml = `<div class="last-session-info" id="last-${ex.id}">Last: ${esc(weightStr)} \u2014 ${lastSession.reps.join(', ')} reps on ${esc(formatDate(lastSession.date))}</div>`;
+      } else {
+        lastHtml = `<div class="last-session-info" id="last-${ex.id}" style="display:none;"></div>`;
       }
 
       // Set inputs — always blank, last session shown as reference above
@@ -169,7 +185,7 @@ function loadExercises(dayId) {
       for (let i = 0; i < ex.target_sets; i++) {
         setsHtml += `
           <div class="input-group">
-            <label>Set ${i + 1}</label>
+            <label for="rep-${ex.id}-${i}">Set ${i + 1}</label>
             <input type="number" min="1" id="rep-${ex.id}-${i}" placeholder="${ex.rep_range_low}-${ex.rep_range_high}">
           </div>
         `;
@@ -180,7 +196,7 @@ function loadExercises(dayId) {
       if (!ex.is_bodyweight) {
         weightHtml = `
           <div class="input-group weight-group">
-            <label>Weight</label>
+            <label for="weight-${ex.id}">Weight</label>
             <input type="number" min="0" step="0.5" id="weight-${ex.id}" placeholder="${ex.starting_weight != null ? ex.starting_weight : 0}">
           </div>
         `;
@@ -231,32 +247,33 @@ function logWorkout(exerciseId, targetSets, isBodyweight) {
   suggestionEl.style.display = 'none';
 
   // Clear previous input errors
+  const repInputs = [];
   for (let i = 0; i < targetSets; i++) {
-    document.getElementById(`rep-${exerciseId}-${i}`).classList.remove('input-error');
+    const input = document.getElementById(`rep-${exerciseId}-${i}`);
+    input.classList.remove('input-error');
+    repInputs.push(input);
   }
+  let wInput = null;
   if (!isBodyweight) {
-    const wEl = document.getElementById(`weight-${exerciseId}`);
-    if (wEl) wEl.classList.remove('input-error');
+    wInput = document.getElementById(`weight-${exerciseId}`);
+    if (wInput) wInput.classList.remove('input-error');
   }
 
-  // Validate
+  // Validate — collect all values first, then check
   const reps = [];
   let valid = true;
 
   for (let i = 0; i < targetSets; i++) {
-    const input = document.getElementById(`rep-${exerciseId}-${i}`);
-    const val = parseInt(input.value, 10);
+    const val = parseInt(repInputs[i].value, 10);
+    reps.push(val); // always push (may be NaN)
     if (isNaN(val) || val < 1) {
-      input.classList.add('input-error');
+      repInputs[i].classList.add('input-error');
       valid = false;
-    } else {
-      reps.push(val);
     }
   }
 
   let weight = null;
-  if (!isBodyweight) {
-    const wInput = document.getElementById(`weight-${exerciseId}`);
+  if (!isBodyweight && wInput) {
     weight = parseFloat(wInput.value);
     if (isNaN(weight) || weight < 0) {
       wInput.classList.add('input-error');
@@ -279,6 +296,18 @@ function logWorkout(exerciseId, targetSets, isBodyweight) {
 
     btn.textContent = 'Logged \u2713';
     showToast('Workout logged!', 'success');
+
+    // Clear inputs after successful log
+    repInputs.forEach(input => { input.value = ''; });
+    if (wInput) wInput.value = '';
+
+    // Update the last-session-info bar
+    const lastEl = document.getElementById(`last-${exerciseId}`);
+    if (lastEl) {
+      const weightStr = weight !== null ? `${weight} lbs` : 'Bodyweight';
+      lastEl.textContent = `Last: ${weightStr} \u2014 ${reps.join(', ')} reps on ${formatDate(today)}`;
+      lastEl.style.display = '';
+    }
 
     setTimeout(() => { btn.disabled = false; btn.textContent = 'Log Workout'; }, 2500);
 
@@ -307,17 +336,22 @@ function loadProgressSelects() {
   try {
     if (days.length === 0) days = DB.getDays();
 
+    const prevDayId = progressDayId;
+    const prevExId = progressExId;
+
     daySelect.innerHTML = '<option value="">Select a day...</option>';
     days.forEach(d => {
-      // #1: Escape day name in option
       const opt = document.createElement('option');
       opt.value = d.id;
       opt.textContent = d.name;
+      if (d.id === prevDayId) opt.selected = true;
       daySelect.appendChild(opt);
     });
 
     daySelect.onchange = () => {
       const dayId = parseInt(daySelect.value, 10);
+      progressDayId = dayId || null;
+      progressExId = null;
       exSelect.innerHTML = '<option value="">Select an exercise...</option>';
       // #11: Destroy chart when changing day to free memory
       if (progressChart) { progressChart.destroy(); progressChart = null; }
@@ -328,7 +362,6 @@ function loadProgressSelects() {
       if (!dayId) return;
       const exercises = DB.getExercises(dayId);
       exercises.forEach(ex => {
-        // #1: Escape exercise name in option
         const opt = document.createElement('option');
         opt.value = ex.id;
         opt.textContent = ex.name;
@@ -337,8 +370,21 @@ function loadProgressSelects() {
     };
 
     exSelect.onchange = () => {
-      if (exSelect.value) loadProgress(parseInt(exSelect.value, 10));
+      if (exSelect.value) {
+        progressExId = parseInt(exSelect.value, 10);
+        loadProgress(progressExId);
+      }
     };
+
+    // Restore previous selection if available
+    if (prevDayId && days.some(d => d.id === prevDayId)) {
+      daySelect.value = prevDayId;
+      daySelect.onchange(); // populate exercise select
+      if (prevExId) {
+        exSelect.value = prevExId;
+        if (exSelect.value) loadProgress(prevExId);
+      }
+    }
   } catch (err) {
     document.getElementById('error-progress').textContent = 'Failed to load: ' + err.message;
     document.getElementById('error-progress').style.display = 'block';
@@ -385,13 +431,21 @@ function loadProgress(exerciseId) {
     tbody.innerHTML = '';
     data.sessions.forEach(s => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${formatDate(s.date)}</td>
-        <td>${s.weight !== null ? s.weight + ' lbs' : 'BW'}</td>
-        <td>${s.reps.join(', ')}</td>
-        <td>${s.avgReps}</td>
-        <td><button class="delete-btn" onclick="deleteSession(${s.id}, ${exerciseId})">Delete</button></td>
-      `;
+      const tdDate = document.createElement('td');
+      tdDate.textContent = formatDate(s.date);
+      const tdWeight = document.createElement('td');
+      tdWeight.textContent = s.weight !== null ? s.weight + ' lbs' : 'BW';
+      const tdReps = document.createElement('td');
+      tdReps.textContent = s.reps.join(', ');
+      const tdAvg = document.createElement('td');
+      tdAvg.textContent = s.avgReps;
+      const tdAction = document.createElement('td');
+      const delBtn = document.createElement('button');
+      delBtn.className = 'delete-btn';
+      delBtn.textContent = 'Delete';
+      delBtn.onclick = () => deleteSession(s.id, exerciseId);
+      tdAction.appendChild(delBtn);
+      tr.append(tdDate, tdWeight, tdReps, tdAvg, tdAction);
       tbody.appendChild(tr);
     });
   } catch (err) {
@@ -447,30 +501,30 @@ function renderChart(data) {
   if (!isBodyweight) {
     scales.y = {
       type: 'linear', position: 'left',
-      title: { display: true, text: 'Weight (lbs)', color: '#555a70', font: { size: 11, family: 'Inter' } },
-      ticks: { color: '#555a70', font: { size: 11, family: 'Inter' } },
+      title: { display: true, text: 'Weight (lbs)', color: '#717799', font: { size: 11, family: 'Inter' } },
+      ticks: { color: '#717799', font: { size: 11, family: 'Inter' } },
       grid: { color: gridColor },
       border: { color: 'transparent' },
     };
     scales.y1 = {
       type: 'linear', position: 'right',
-      title: { display: true, text: 'Avg Reps', color: '#555a70', font: { size: 11, family: 'Inter' } },
-      ticks: { color: '#555a70', font: { size: 11, family: 'Inter' } },
+      title: { display: true, text: 'Avg Reps', color: '#717799', font: { size: 11, family: 'Inter' } },
+      ticks: { color: '#717799', font: { size: 11, family: 'Inter' } },
       grid: { drawOnChartArea: false },
       border: { color: 'transparent' },
     };
   } else {
     scales.y = {
       type: 'linear', position: 'left',
-      title: { display: true, text: 'Avg Reps', color: '#555a70', font: { size: 11, family: 'Inter' } },
-      ticks: { color: '#555a70', font: { size: 11, family: 'Inter' } },
+      title: { display: true, text: 'Avg Reps', color: '#717799', font: { size: 11, family: 'Inter' } },
+      ticks: { color: '#717799', font: { size: 11, family: 'Inter' } },
       grid: { color: gridColor },
       border: { color: 'transparent' },
     };
   }
 
   scales.x = {
-    ticks: { color: '#555a70', font: { size: 11, family: 'Inter' }, maxRotation: 45 },
+    ticks: { color: '#717799', font: { size: 11, family: 'Inter' }, maxRotation: 45 },
     grid: { color: gridColor },
     border: { color: 'transparent' },
   };
@@ -567,6 +621,9 @@ document.getElementById('add-exercise-form').addEventListener('submit', (e) => {
     showToast(`"${name}" added!`, 'success');
     e.target.reset();
     days = [];
+    // Re-populate and restore selected day so user can add another to the same day
+    loadManageSelects();
+    document.getElementById('add-ex-day').value = dayId;
   } catch (err) {
     errorEl.textContent = err.message;
     errorEl.style.display = 'block';

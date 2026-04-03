@@ -11,7 +11,7 @@
   --border-focus: #4f6ef7;
   --text-primary: #f0f0f5;
   --text-secondary: #8a8fa8;
-  --text-muted: #555a70;
+  --text-muted: #717799;
   --accent: #4f6ef7;
   --accent-hover: #3d5ae0;
   --accent-glow: rgba(79, 110, 247, 0.15);
@@ -518,7 +518,7 @@ nav {
   font-weight: 500;
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23555a70' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23717799' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   transition: border-color var(--transition);

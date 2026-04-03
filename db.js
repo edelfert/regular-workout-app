@@ -128,17 +128,21 @@ var DB = (() => {
   }
 
   function createDay(name, exercises) {
+    if (!name || !String(name).trim()) throw new Error('Day name is required');
+    if (!Array.isArray(exercises) || exercises.length === 0) throw new Error('At least one exercise is required');
+    validateExerciseList(exercises);
+
     const data = load();
     const maxNum = data.workout_days.reduce((m, d) => Math.max(m, d.day_number), 0);
     const dayId = data._nextId.days++;
-    data.workout_days.push({ id: dayId, day_number: maxNum + 1, name });
+    data.workout_days.push({ id: dayId, day_number: maxNum + 1, name: String(name).trim() });
 
     exercises.forEach((ex, idx) => {
       const exId = data._nextId.exercises++;
       data.exercises.push({
         id: exId,
         day_id: dayId,
-        name: ex.name,
+        name: String(ex.name).trim(),
         target_sets: ex.target_sets,
         rep_range_low: ex.rep_range_low,
         rep_range_high: ex.rep_range_high,
@@ -157,19 +161,29 @@ var DB = (() => {
     return load().exercises.filter(e => e.day_id === dayId).sort((a, b) => a.sort_order - b.sort_order);
   }
 
+  function validateExerciseList(exercises) {
+    for (const ex of exercises) {
+      if (!ex.name || !String(ex.name).trim()) throw new Error('Exercise name is required');
+      if (!Number.isInteger(ex.target_sets) || ex.target_sets < 1) throw new Error('Target sets must be at least 1');
+      if (!Number.isInteger(ex.rep_range_low) || ex.rep_range_low < 1) throw new Error('Rep range low must be at least 1');
+      if (!Number.isInteger(ex.rep_range_high) || ex.rep_range_high < ex.rep_range_low) throw new Error('Rep range high must be >= rep range low');
+    }
+  }
+
   function addExercise(dayId, ex) {
     const data = load();
     // #8: verify day exists
     if (!data.workout_days.some(d => d.id === dayId)) {
       throw new Error('Workout day not found');
     }
+    validateExerciseList([ex]);
     const existing = data.exercises.filter(e => e.day_id === dayId);
     const maxOrder = existing.reduce((m, e) => Math.max(m, e.sort_order), -1);
     const exId = data._nextId.exercises++;
     const record = {
       id: exId,
       day_id: dayId,
-      name: ex.name,
+      name: String(ex.name).trim(),
       target_sets: ex.target_sets,
       rep_range_low: ex.rep_range_low,
       rep_range_high: ex.rep_range_high,
@@ -183,6 +197,13 @@ var DB = (() => {
     return record;
   }
 
+  function normalizeDate(date) {
+    // Ensure YYYY-MM-DD with zero-padding
+    const match = String(date).match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (!match) throw new Error('Invalid date format. Expected YYYY-MM-DD.');
+    return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+  }
+
   function logSession(exerciseId, date, weight, reps) {
     const data = load();
     const exercise = data.exercises.find(e => e.id === exerciseId);
@@ -193,7 +214,8 @@ var DB = (() => {
       throw new Error(`Expected ${exercise.target_sets} sets but got ${reps.length}`);
     }
 
-    const duplicate = data.sessions.find(s => s.exercise_id === exerciseId && s.date === date);
+    const normalizedDate = normalizeDate(date);
+    const duplicate = data.sessions.find(s => s.exercise_id === exerciseId && s.date === normalizedDate);
     if (duplicate) throw new Error('Session already logged for this exercise on this date. Delete it first or choose a different date.');
 
     const normalizedWeight = exercise.is_bodyweight ? null : weight; // #4: normalize before storing and computing
@@ -201,7 +223,7 @@ var DB = (() => {
     data.sessions.push({
       id: sessId,
       exercise_id: exerciseId,
-      date,
+      date: normalizedDate,
       weight: normalizedWeight,
       reps,
     });
@@ -272,7 +294,7 @@ var DB = (() => {
     const anyBelowBottom = reps.some(r => r < exercise.rep_range_low);
 
     if (allAtTop) {
-      const newWeight = currentWeight + increment;
+      const newWeight = Math.round((currentWeight + increment) * 2) / 2;
       return { action: 'increase', newWeight, message: `Next session: try ${newWeight} lbs (+${increment})` };
     } else if (anyBelowBottom) {
       const dropped = Math.round((currentWeight * 0.95) * 2) / 2;

@@ -310,4 +310,70 @@ describe('Validation', () => {
     });
     assert.strictEqual(added.starting_weight, 0);
   });
+
+  it('normalizes date format in logSession', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+    // Log with non-padded date
+    const result = DB.logSession(ex.id, '2025-4-1', ex.starting_weight, [10, 10, 10]);
+    assert.ok(result.id);
+    const progress = DB.getProgress(ex.id);
+    const session = progress.sessions.find(s => s.date === '2025-04-01');
+    assert.ok(session, 'Date should be normalized to zero-padded format');
+  });
+
+  it('rejects invalid date format in logSession', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+    assert.throws(
+      () => DB.logSession(ex.id, 'not-a-date', ex.starting_weight, [10, 10, 10]),
+      /Invalid date format/
+    );
+  });
+
+  it('createDay rejects empty name', () => {
+    assert.throws(
+      () => DB.createDay('', [{ name: 'Test', target_sets: 3, rep_range_low: 8, rep_range_high: 12 }]),
+      /Day name is required/
+    );
+  });
+
+  it('createDay rejects empty exercise list', () => {
+    assert.throws(
+      () => DB.createDay('Test Day', []),
+      /At least one exercise/
+    );
+  });
+
+  it('addExercise rejects invalid exercise fields', () => {
+    const days = DB.getDays();
+    assert.throws(
+      () => DB.addExercise(days[0].id, {
+        name: '', target_sets: 3, rep_range_low: 8, rep_range_high: 12,
+      }),
+      /Exercise name is required/
+    );
+    assert.throws(
+      () => DB.addExercise(days[0].id, {
+        name: 'Test', target_sets: 0, rep_range_low: 8, rep_range_high: 12,
+      }),
+      /Target sets must be at least 1/
+    );
+    assert.throws(
+      () => DB.addExercise(days[0].id, {
+        name: 'Test', target_sets: 3, rep_range_low: 8, rep_range_high: 5,
+      }),
+      /Rep range high must be >= rep range low/
+    );
+  });
+
+  it('computeSuggestion rounds increase weight to nearest 0.5', () => {
+    const ex = { is_bodyweight: false, is_compound: false, rep_range_low: 8, rep_range_high: 12 };
+    // 22.3 + 2.5 = 24.8 -> should round to 25.0
+    const result = DB.computeSuggestion(ex, 22.3, [12, 12, 12]);
+    assert.strictEqual(result.action, 'increase');
+    assert.strictEqual(result.newWeight, 25); // rounded to nearest 0.5
+  });
 });
