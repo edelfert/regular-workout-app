@@ -1,11 +1,8 @@
 {
   "name": "regular-workout-app",
-  "version": "1.0.0",
-  "description": "A local workout tracking app with progressive overload suggestions",
-  "main": "server.js",
+  "version": "2.0.0",
+  "description": "A static workout tracking app with progressive overload suggestions — runs on GitHub Pages",
   "scripts": {
-    "start": "node server.js",
-    "seed": "node seed.js",
     "test": "node --test test.js"
   },
   "repository": {
@@ -14,9 +11,5 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "better-sqlite3": "^12.8.0",
-    "express": "^5.2.1"
-  }
+  "license": "ISC"
 }

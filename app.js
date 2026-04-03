@@ -1,19 +1,10 @@
+// Initialize / seed on first visit
+DB.seed();
+
 // State
 let days = [];
 let currentDayId = null;
 let progressChart = null;
-
-// --- API helpers ---
-
-async function api(url, options = {}) {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
-  return data;
-}
 
 // --- View switching ---
 
@@ -30,19 +21,16 @@ function showView(view) {
 
 // --- Dashboard ---
 
-async function loadDashboard() {
-  const loading = document.getElementById('loading-dashboard');
+function loadDashboard() {
   const errorEl = document.getElementById('error-dashboard');
   const tabsEl = document.getElementById('day-tabs');
   const listEl = document.getElementById('exercises-list');
 
-  loading.style.display = 'block';
   errorEl.style.display = 'none';
   listEl.innerHTML = '';
 
   try {
-    days = await api('/api/days');
-    loading.style.display = 'none';
+    days = DB.getDays();
 
     // Render day tabs
     tabsEl.innerHTML = '';
@@ -55,10 +43,8 @@ async function loadDashboard() {
     });
 
     if (!currentDayId && days.length > 0) {
-      // Default to today's day based on rotation
       const todayIndex = getDayRotation();
       currentDayId = days[todayIndex] ? days[todayIndex].id : days[0].id;
-      // Re-render tabs with active state
       tabsEl.querySelectorAll('.day-tab').forEach((btn, i) => {
         if (days[i].id === currentDayId) btn.classList.add('active');
       });
@@ -66,15 +52,13 @@ async function loadDashboard() {
 
     if (currentDayId) loadExercises(currentDayId);
   } catch (err) {
-    loading.style.display = 'none';
     errorEl.textContent = 'Failed to load workout days: ' + err.message;
     errorEl.style.display = 'block';
   }
 }
 
 function getDayRotation() {
-  // Simple rotation: days since a reference date modulo number of days
-  const ref = new Date('2025-03-30'); // Day 1 was March 30, 2025
+  const ref = new Date('2025-03-30'); // Day 1 reference date
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diff = Math.floor((today - ref) / (1000 * 60 * 60 * 24));
@@ -89,16 +73,14 @@ function selectDay(dayId) {
   loadExercises(dayId);
 }
 
-async function loadExercises(dayId) {
+function loadExercises(dayId) {
   const listEl = document.getElementById('exercises-list');
   const errorEl = document.getElementById('error-dashboard');
-  listEl.innerHTML = '<div class="loading">Loading exercises...</div>';
+  listEl.innerHTML = '';
   errorEl.style.display = 'none';
 
   try {
-    const exercises = await api(`/api/days/${dayId}/exercises`);
-    listEl.innerHTML = '';
-    const today = new Date().toISOString().split('T')[0];
+    const exercises = DB.getExercises(dayId);
 
     exercises.forEach(ex => {
       const card = document.createElement('div');
@@ -124,7 +106,7 @@ async function loadExercises(dayId) {
 
       card.innerHTML = `
         <h3>${ex.name}${ex.is_bodyweight ? ' <span style="color:#888;font-size:0.8rem;">(bodyweight)</span>' : ''}</h3>
-        <div class="exercise-meta">${ex.target_sets} sets × ${ex.rep_range_low}-${ex.rep_range_high} reps${ex.is_compound ? ' • Compound' : ' • Isolation'}${ex.starting_weight ? ' • Starting: ' + ex.starting_weight + ' lbs' : ''}</div>
+        <div class="exercise-meta">${ex.target_sets} sets \u00d7 ${ex.rep_range_low}-${ex.rep_range_high} reps${ex.is_compound ? ' \u2022 Compound' : ' \u2022 Isolation'}${ex.starting_weight ? ' \u2022 Starting: ' + ex.starting_weight + ' lbs' : ''}</div>
         <div class="sets-row">
           ${weightHtml}
           ${setsHtml}
@@ -136,13 +118,12 @@ async function loadExercises(dayId) {
       listEl.appendChild(card);
     });
   } catch (err) {
-    listEl.innerHTML = '';
     errorEl.textContent = 'Failed to load exercises: ' + err.message;
     errorEl.style.display = 'block';
   }
 }
 
-async function logWorkout(exerciseId, targetSets, isBodyweight) {
+function logWorkout(exerciseId, targetSets, isBodyweight) {
   const errorEl = document.getElementById(`error-${exerciseId}`);
   const suggestionEl = document.getElementById(`suggestion-${exerciseId}`);
   errorEl.style.display = 'none';
@@ -183,7 +164,7 @@ async function logWorkout(exerciseId, targetSets, isBodyweight) {
   }
 
   if (!valid) {
-    errorEl.textContent = 'Please fill in all fields with valid values. Reps must be ≥ 1' + (isBodyweight ? '.' : ' and weight must be ≥ 0.');
+    errorEl.textContent = 'Please fill in all fields with valid values. Reps must be \u2265 1' + (isBodyweight ? '.' : ' and weight must be \u2265 0.');
     errorEl.style.display = 'block';
     return;
   }
@@ -191,16 +172,11 @@ async function logWorkout(exerciseId, targetSets, isBodyweight) {
   const today = new Date().toISOString().split('T')[0];
 
   try {
+    const result = DB.logSession(exerciseId, today, weight, reps);
+
     const btn = document.querySelector(`#exercise-${exerciseId} .log-btn`);
+    btn.textContent = 'Logged \u2713';
     btn.disabled = true;
-    btn.textContent = 'Saving...';
-
-    const body = { exercise_id: exerciseId, date: today, reps };
-    if (!isBodyweight) body.weight = weight;
-
-    const result = await api('/api/sessions', { method: 'POST', body: JSON.stringify(body) });
-
-    btn.textContent = 'Logged ✓';
     setTimeout(() => { btn.disabled = false; btn.textContent = 'Log Workout'; }, 2000);
 
     if (result.suggestion) {
@@ -209,9 +185,6 @@ async function logWorkout(exerciseId, targetSets, isBodyweight) {
       suggestionEl.style.display = 'block';
     }
   } catch (err) {
-    const btn = document.querySelector(`#exercise-${exerciseId} .log-btn`);
-    btn.disabled = false;
-    btn.textContent = 'Log Workout';
     errorEl.textContent = err.message;
     errorEl.style.display = 'block';
   }
@@ -219,23 +192,23 @@ async function logWorkout(exerciseId, targetSets, isBodyweight) {
 
 // --- Progress View ---
 
-async function loadProgressSelects() {
+function loadProgressSelects() {
   const daySelect = document.getElementById('progress-day-select');
   const exSelect = document.getElementById('progress-exercise-select');
 
   try {
-    if (days.length === 0) days = await api('/api/days');
+    if (days.length === 0) days = DB.getDays();
 
     daySelect.innerHTML = '<option value="">Select a day...</option>';
     days.forEach(d => {
       daySelect.innerHTML += `<option value="${d.id}">${d.name}</option>`;
     });
 
-    daySelect.onchange = async () => {
-      const dayId = daySelect.value;
+    daySelect.onchange = () => {
+      const dayId = parseInt(daySelect.value, 10);
       exSelect.innerHTML = '<option value="">Select an exercise...</option>';
       if (!dayId) return;
-      const exercises = await api(`/api/days/${dayId}/exercises`);
+      const exercises = DB.getExercises(dayId);
       exercises.forEach(ex => {
         exSelect.innerHTML += `<option value="${ex.id}">${ex.name}</option>`;
       });
@@ -250,22 +223,19 @@ async function loadProgressSelects() {
   }
 }
 
-async function loadProgress(exerciseId) {
-  const loadingEl = document.getElementById('loading-progress');
+function loadProgress(exerciseId) {
   const errorEl = document.getElementById('error-progress');
   const chartContainer = document.getElementById('progress-chart-container');
   const suggestionEl = document.getElementById('progress-suggestion');
   const historyEl = document.getElementById('progress-history');
 
-  loadingEl.style.display = 'block';
   errorEl.style.display = 'none';
   chartContainer.style.display = 'none';
   suggestionEl.style.display = 'none';
   historyEl.style.display = 'none';
 
   try {
-    const data = await api(`/api/exercises/${exerciseId}/progress`);
-    loadingEl.style.display = 'none';
+    const data = DB.getProgress(exerciseId);
 
     if (data.sessions.length === 0) {
       errorEl.textContent = 'No sessions logged yet for this exercise.';
@@ -300,7 +270,6 @@ async function loadProgress(exerciseId) {
       tbody.appendChild(tr);
     });
   } catch (err) {
-    loadingEl.style.display = 'none';
     errorEl.textContent = 'Failed to load progress: ' + err.message;
     errorEl.style.display = 'block';
   }
@@ -345,33 +314,24 @@ function renderChart(data) {
   const scales = {};
   if (!isBodyweight) {
     scales.y = {
-      type: 'linear',
-      position: 'left',
+      type: 'linear', position: 'left',
       title: { display: true, text: 'Weight (lbs)', color: '#888' },
-      ticks: { color: '#888' },
-      grid: { color: '#2a2d37' },
+      ticks: { color: '#888' }, grid: { color: '#2a2d37' },
     };
     scales.y1 = {
-      type: 'linear',
-      position: 'right',
+      type: 'linear', position: 'right',
       title: { display: true, text: 'Avg Reps', color: '#888' },
-      ticks: { color: '#888' },
-      grid: { drawOnChartArea: false },
+      ticks: { color: '#888' }, grid: { drawOnChartArea: false },
     };
   } else {
     scales.y = {
-      type: 'linear',
-      position: 'left',
+      type: 'linear', position: 'left',
       title: { display: true, text: 'Avg Reps', color: '#888' },
-      ticks: { color: '#888' },
-      grid: { color: '#2a2d37' },
+      ticks: { color: '#888' }, grid: { color: '#2a2d37' },
     };
   }
 
-  scales.x = {
-    ticks: { color: '#888' },
-    grid: { color: '#2a2d37' },
-  };
+  scales.x = { ticks: { color: '#888' }, grid: { color: '#2a2d37' } };
 
   progressChart = new Chart(ctx, {
     type: 'line',
@@ -395,10 +355,10 @@ function renderChart(data) {
   });
 }
 
-async function deleteSession(sessionId, exerciseId) {
+function deleteSession(sessionId, exerciseId) {
   if (!confirm('Delete this session entry?')) return;
   try {
-    await api(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+    DB.deleteSession(sessionId);
     loadProgress(exerciseId);
   } catch (err) {
     alert('Failed to delete: ' + err.message);
@@ -407,10 +367,10 @@ async function deleteSession(sessionId, exerciseId) {
 
 // --- Manage View ---
 
-async function loadManageSelects() {
+function loadManageSelects() {
   const select = document.getElementById('add-ex-day');
   try {
-    if (days.length === 0) days = await api('/api/days');
+    if (days.length === 0) days = DB.getDays();
     select.innerHTML = '<option value="">Select...</option>';
     days.forEach(d => {
       select.innerHTML += `<option value="${d.id}">${d.name}</option>`;
@@ -422,12 +382,12 @@ async function loadManageSelects() {
 }
 
 // Add exercise form
-document.getElementById('add-exercise-form').addEventListener('submit', async (e) => {
+document.getElementById('add-exercise-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const errorEl = document.getElementById('add-ex-error');
   errorEl.style.display = 'none';
 
-  const dayId = document.getElementById('add-ex-day').value;
+  const dayId = parseInt(document.getElementById('add-ex-day').value, 10);
   const name = document.getElementById('add-ex-name').value.trim();
   const target_sets = parseInt(document.getElementById('add-ex-sets').value, 10);
   const rep_range_low = parseInt(document.getElementById('add-ex-low').value, 10);
@@ -438,15 +398,12 @@ document.getElementById('add-exercise-form').addEventListener('submit', async (e
 
   if (!dayId) { errorEl.textContent = 'Please select a day.'; errorEl.style.display = 'block'; return; }
   if (!name) { errorEl.textContent = 'Exercise name is required.'; errorEl.style.display = 'block'; return; }
-  if (isNaN(target_sets) || target_sets < 1) { errorEl.textContent = 'Target sets must be ≥ 1.'; errorEl.style.display = 'block'; return; }
-  if (isNaN(rep_range_low) || rep_range_low < 1) { errorEl.textContent = 'Rep range low must be ≥ 1.'; errorEl.style.display = 'block'; return; }
-  if (isNaN(rep_range_high) || rep_range_high < rep_range_low) { errorEl.textContent = 'Rep range high must be ≥ low.'; errorEl.style.display = 'block'; return; }
+  if (isNaN(target_sets) || target_sets < 1) { errorEl.textContent = 'Target sets must be \u2265 1.'; errorEl.style.display = 'block'; return; }
+  if (isNaN(rep_range_low) || rep_range_low < 1) { errorEl.textContent = 'Rep range low must be \u2265 1.'; errorEl.style.display = 'block'; return; }
+  if (isNaN(rep_range_high) || rep_range_high < rep_range_low) { errorEl.textContent = 'Rep range high must be \u2265 low.'; errorEl.style.display = 'block'; return; }
 
   try {
-    await api(`/api/days/${dayId}/exercises`, {
-      method: 'POST',
-      body: JSON.stringify({ name, target_sets, rep_range_low, rep_range_high, is_bodyweight, is_compound, starting_weight }),
-    });
+    DB.addExercise(dayId, { name, target_sets, rep_range_low, rep_range_high, is_bodyweight, is_compound, starting_weight });
     alert('Exercise added!');
     e.target.reset();
   } catch (err) {
@@ -471,18 +428,16 @@ function addNewDayExerciseRow() {
     <label style="font-size:0.75rem;color:#888;"><input type="checkbox" class="ndex-bw"> BW</label>
     <label style="font-size:0.75rem;color:#888;"><input type="checkbox" class="ndex-compound"> Compound</label>
     <input type="number" placeholder="Weight" step="0.5" min="0" style="width:60px">
-    <button type="button" class="remove-ex-btn" onclick="this.parentElement.remove()">×</button>
+    <button type="button" class="remove-ex-btn" onclick="this.parentElement.remove()">\u00d7</button>
   `;
   list.appendChild(row);
   newDayExCounter++;
 }
 
 document.getElementById('add-day-ex-btn').addEventListener('click', addNewDayExerciseRow);
-
-// Add one row by default
 addNewDayExerciseRow();
 
-document.getElementById('add-day-form').addEventListener('submit', async (e) => {
+document.getElementById('add-day-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const errorEl = document.getElementById('add-day-error');
   errorEl.style.display = 'none';
@@ -509,24 +464,13 @@ document.getElementById('add-day-form').addEventListener('submit', async (e) => 
     if (isNaN(low) || low < 1) { errorEl.textContent = `Invalid rep low for "${exName}".`; errorEl.style.display = 'block'; return; }
     if (isNaN(high) || high < low) { errorEl.textContent = `Invalid rep high for "${exName}".`; errorEl.style.display = 'block'; return; }
 
-    exercises.push({
-      name: exName,
-      target_sets: sets,
-      rep_range_low: low,
-      rep_range_high: high,
-      is_bodyweight: isBw,
-      is_compound: isCompound,
-      starting_weight: weight,
-    });
+    exercises.push({ name: exName, target_sets: sets, rep_range_low: low, rep_range_high: high, is_bodyweight: isBw, is_compound: isCompound, starting_weight: weight });
   }
 
   try {
-    await api('/api/days', {
-      method: 'POST',
-      body: JSON.stringify({ name, exercises }),
-    });
+    DB.createDay(name, exercises);
     alert('Workout day created!');
-    days = []; // force reload
+    days = [];
     e.target.reset();
     document.getElementById('new-day-ex-list').innerHTML = '';
     addNewDayExerciseRow();
@@ -534,6 +478,16 @@ document.getElementById('add-day-form').addEventListener('submit', async (e) => 
     errorEl.textContent = err.message;
     errorEl.style.display = 'block';
   }
+});
+
+// Reset database
+document.getElementById('reset-db-btn').addEventListener('click', () => {
+  if (!confirm('This will permanently delete all your workout data and reset to defaults. Are you sure?')) return;
+  DB.resetDatabase();
+  days = [];
+  currentDayId = null;
+  showView('dashboard');
+  alert('Database reset to defaults.');
 });
 
 // --- Init ---

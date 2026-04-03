@@ -21,7 +21,6 @@
     <!-- Dashboard View -->
     <div id="view-dashboard" class="view">
       <div id="day-tabs" class="day-tabs"></div>
-      <div id="loading-dashboard" class="loading">Loading exercises...</div>
       <div id="error-dashboard" class="error-msg" style="display:none;"></div>
       <div id="exercises-list"></div>
     </div>
@@ -33,7 +32,6 @@
         <select id="progress-day-select"><option value="">Select a day...</option></select>
         <select id="progress-exercise-select"><option value="">Select an exercise...</option></select>
       </div>
-      <div id="loading-progress" class="loading" style="display:none;">Loading progress...</div>
       <div id="error-progress" class="error-msg" style="display:none;"></div>
       <div id="progress-chart-container" style="display:none;">
         <canvas id="progress-chart"></canvas>
@@ -83,9 +81,16 @@
           <button type="submit">Create Day</button>
         </form>
       </section>
+
+      <section class="manage-section danger-section">
+        <h3>Reset Database</h3>
+        <p>This will delete all your data and re-seed with the default 4-day routine.</p>
+        <button type="button" id="reset-db-btn" class="btn-danger">Reset All Data</button>
+      </section>
     </div>
   </main>
 
+  <script src="db.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

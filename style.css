@@ -374,6 +374,27 @@ nav {
   font-size: 0.8rem;
 }
 
+.danger-section p {
+  color: #888;
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+
+.btn-danger {
+  padding: 8px 20px;
+  background: #5a2a2a;
+  color: #cf6f6f;
+  border: 1px solid #7a3a3a;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn-danger:hover {
+  background: #7a3a3a;
+  color: #fff;
+}
+
 /* Responsive */
 @media (max-width: 600px) {
   body { padding: 8px; }

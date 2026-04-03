@@ -1,212 +1,245 @@
-const { describe, it, before, after } = require('node:test');
+const { describe, it, before, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const http = require('node:http');
-const { app, computeSuggestion } = require('./server');
+const fs = require('node:fs');
+const path = require('node:path');
 
-let server;
-let baseUrl;
+// Shim localStorage for Node
+const storage = {};
+globalThis.localStorage = {
+  getItem(key) { return storage[key] ?? null; },
+  setItem(key, val) { storage[key] = String(val); },
+  removeItem(key) { delete storage[key]; },
+  clear() { for (const k in storage) delete storage[k]; },
+};
 
-function request(method, path, body) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(path, baseUrl);
-    const options = {
-      method,
-      hostname: url.hostname,
-      port: url.port,
-      path: url.pathname + url.search,
-      headers: { 'Content-Type': 'application/json' },
-    };
-    const req = http.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          resolve({ status: res.statusCode, body: JSON.parse(data) });
-        } catch {
-          resolve({ status: res.statusCode, body: data });
-        }
-      });
-    });
-    req.on('error', reject);
-    if (body) req.write(JSON.stringify(body));
-    req.end();
-  });
+// Load the DB module by evaluating db.js (it's an IIFE that assigns to DB)
+const dbCode = fs.readFileSync(path.join(__dirname, 'db.js'), 'utf8');
+eval(dbCode);
+
+function resetAndSeed() {
+  localStorage.clear();
+  DB.seed();
 }
 
-before(async () => {
-  // Run seed
-  require('./seed');
+describe('Data Layer', () => {
 
-  server = http.createServer(app);
-  await new Promise(resolve => server.listen(0, resolve));
-  const port = server.address().port;
-  baseUrl = `http://127.0.0.1:${port}`;
+  beforeEach(() => { resetAndSeed(); });
+
+  it('seed creates 4 workout days', () => {
+    const days = DB.getDays();
+    assert.strictEqual(days.length, 4);
+    assert.strictEqual(days[0].day_number, 1);
+    assert.strictEqual(days[3].day_number, 4);
+  });
+
+  it('seed is idempotent', () => {
+    DB.seed(); // second call
+    assert.strictEqual(DB.getDays().length, 4);
+  });
+
+  it('getExercises returns exercises for a day', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    assert.strictEqual(exercises.length, 6);
+    assert.strictEqual(exercises[0].name, 'Push-Ups');
+  });
+
+  it('seed includes historical session data from 2025-03-30', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const progress = DB.getProgress(exercises[1].id); // Leg Press
+    assert.strictEqual(progress.sessions.length, 1);
+    assert.strictEqual(progress.sessions[0].date, '2025-03-30');
+    assert.strictEqual(progress.sessions[0].weight, 90);
+    assert.deepStrictEqual(progress.sessions[0].reps, [10, 10, 10]);
+  });
 });
 
-after(() => {
-  server.close();
+describe('Session Logging', () => {
+
+  beforeEach(() => { resetAndSeed(); });
+
+  it('logs a valid workout session', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+
+    const result = DB.logSession(ex.id, '2025-04-01', ex.starting_weight, [10, 10, 10]);
+    assert.ok(result.id);
+    assert.ok(result.suggestion);
+
+    const progress = DB.getProgress(ex.id);
+    assert.ok(progress.sessions.some(s => s.date === '2025-04-01'));
+  });
+
+  it('rejects duplicate session for same exercise and date', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+
+    DB.logSession(ex.id, '2025-04-02', ex.starting_weight, [10, 10, 10]);
+    assert.throws(
+      () => DB.logSession(ex.id, '2025-04-02', ex.starting_weight, [10, 10, 10]),
+      /already logged/
+    );
+  });
+
+  it('logSession throws for non-existent exercise', () => {
+    assert.throws(
+      () => DB.logSession(9999, '2025-04-03', 50, [10, 10, 10]),
+      /not found/
+    );
+  });
+
+  it('logs bodyweight exercise without weight', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const bwEx = exercises.find(e => e.is_bodyweight);
+
+    const result = DB.logSession(bwEx.id, '2025-04-01', null, [12, 12, 12]);
+    assert.ok(result.id);
+
+    const progress = DB.getProgress(bwEx.id);
+    const session = progress.sessions.find(s => s.date === '2025-04-01');
+    assert.strictEqual(session.weight, null);
+  });
+
+  it('deleteSession removes a session', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+
+    const result = DB.logSession(ex.id, '2025-04-05', ex.starting_weight, [10, 10, 10]);
+    DB.deleteSession(result.id);
+
+    const progress = DB.getProgress(ex.id);
+    assert.ok(!progress.sessions.some(s => s.date === '2025-04-05'));
+  });
+
+  it('deleteSession throws for non-existent session', () => {
+    assert.throws(() => DB.deleteSession(99999), /not found/);
+  });
 });
 
-describe('API Smoke Tests', () => {
+describe('Progress', () => {
 
-  it('GET /api/days returns workout days', async () => {
-    const res = await request('GET', '/api/days');
-    assert.strictEqual(res.status, 200);
-    assert.ok(Array.isArray(res.body));
-    assert.ok(res.body.length >= 4);
-  });
+  beforeEach(() => { resetAndSeed(); });
 
-  it('GET /api/days/:dayId/exercises returns exercises', async () => {
-    const days = (await request('GET', '/api/days')).body;
-    const res = await request('GET', `/api/days/${days[0].id}/exercises`);
-    assert.strictEqual(res.status, 200);
-    assert.ok(Array.isArray(res.body));
-    assert.ok(res.body.length > 0);
-  });
+  it('getProgress returns correct shape', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const progress = DB.getProgress(exercises[0].id);
 
-  it('POST /api/sessions logs a valid workout session', async () => {
-    const days = (await request('GET', '/api/days')).body;
-    const exercises = (await request('GET', `/api/days/${days[0].id}/exercises`)).body;
-    // Find a non-bodyweight exercise
-    const ex = exercises.find(e => !e.is_bodyweight);
-
-    const res = await request('POST', '/api/sessions', {
-      exercise_id: ex.id,
-      date: '2025-04-01',
-      weight: ex.starting_weight || 50,
-      reps: [10, 10, 10],
-    });
-    assert.strictEqual(res.status, 201);
-    assert.ok(res.body.message);
-    assert.ok(res.body.suggestion);
-  });
-
-  it('POST /api/sessions rejects duplicate session', async () => {
-    const days = (await request('GET', '/api/days')).body;
-    const exercises = (await request('GET', `/api/days/${days[0].id}/exercises`)).body;
-    const ex = exercises.find(e => !e.is_bodyweight);
-
-    const res = await request('POST', '/api/sessions', {
-      exercise_id: ex.id,
-      date: '2025-04-01',
-      weight: ex.starting_weight || 50,
-      reps: [10, 10, 10],
-    });
-    assert.strictEqual(res.status, 409);
-    assert.ok(res.body.error);
-  });
-
-  it('POST /api/sessions rejects missing fields', async () => {
-    const res = await request('POST', '/api/sessions', {
-      exercise_id: 1,
-    });
-    assert.strictEqual(res.status, 400);
-    assert.ok(res.body.error);
-  });
-
-  it('POST /api/sessions rejects zero reps', async () => {
-    const res = await request('POST', '/api/sessions', {
-      exercise_id: 1,
-      date: '2025-04-02',
-      weight: 50,
-      reps: [0, 10, 10],
-    });
-    assert.strictEqual(res.status, 400);
-    assert.ok(res.body.error);
-  });
-
-  it('POST /api/sessions rejects negative weight', async () => {
-    const days = (await request('GET', '/api/days')).body;
-    const exercises = (await request('GET', `/api/days/${days[0].id}/exercises`)).body;
-    const ex = exercises.find(e => !e.is_bodyweight);
-
-    const res = await request('POST', '/api/sessions', {
-      exercise_id: ex.id,
-      date: '2025-04-03',
-      weight: -5,
-      reps: [10, 10, 10],
-    });
-    assert.strictEqual(res.status, 400);
-    assert.ok(res.body.error);
-  });
-
-  it('GET /api/exercises/:id/progress returns correct shape', async () => {
-    const days = (await request('GET', '/api/days')).body;
-    const exercises = (await request('GET', `/api/days/${days[0].id}/exercises`)).body;
-
-    const res = await request('GET', `/api/exercises/${exercises[0].id}/progress`);
-    assert.strictEqual(res.status, 200);
-    assert.ok(res.body.exercise);
-    assert.ok(Array.isArray(res.body.sessions));
-    if (res.body.sessions.length > 0) {
-      const s = res.body.sessions[0];
+    assert.ok(progress.exercise);
+    assert.ok(Array.isArray(progress.sessions));
+    if (progress.sessions.length > 0) {
+      const s = progress.sessions[0];
       assert.ok('date' in s);
       assert.ok('reps' in s);
       assert.ok('avgReps' in s);
     }
+  });
+
+  it('getProgress returns suggestion based on last session', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+    const progress = DB.getProgress(ex.id);
+    assert.ok(progress.suggestion);
+    assert.ok(progress.suggestion.message);
   });
 });
 
 describe('Progressive Overload Suggestion Logic', () => {
 
   const compoundExercise = {
-    is_bodyweight: 0,
-    is_compound: 1,
-    rep_range_low: 8,
-    rep_range_high: 12,
+    is_bodyweight: false, is_compound: true,
+    rep_range_low: 8, rep_range_high: 12,
   };
 
   const isolationExercise = {
-    is_bodyweight: 0,
-    is_compound: 0,
-    rep_range_low: 8,
-    rep_range_high: 12,
+    is_bodyweight: false, is_compound: false,
+    rep_range_low: 8, rep_range_high: 12,
   };
 
   const bodyweightExercise = {
-    is_bodyweight: 1,
-    is_compound: 1,
-    rep_range_low: 10,
-    rep_range_high: 15,
+    is_bodyweight: true, is_compound: true,
+    rep_range_low: 10, rep_range_high: 15,
   };
 
   it('suggests weight increase when all sets at top of range (compound)', () => {
-    const result = computeSuggestion(compoundExercise, 100, [12, 12, 12]);
+    const result = DB.computeSuggestion(compoundExercise, 100, [12, 12, 12]);
     assert.strictEqual(result.action, 'increase');
     assert.strictEqual(result.newWeight, 105);
   });
 
   it('suggests weight increase when all sets at top of range (isolation)', () => {
-    const result = computeSuggestion(isolationExercise, 20, [12, 12, 12]);
+    const result = DB.computeSuggestion(isolationExercise, 20, [12, 12, 12]);
     assert.strictEqual(result.action, 'increase');
     assert.strictEqual(result.newWeight, 22.5);
   });
 
   it('suggests hold when some sets at top, some not', () => {
-    const result = computeSuggestion(compoundExercise, 100, [12, 10, 10]);
+    const result = DB.computeSuggestion(compoundExercise, 100, [12, 10, 10]);
     assert.strictEqual(result.action, 'hold');
     assert.strictEqual(result.newWeight, 100);
   });
 
   it('suggests drop when any set below bottom of range', () => {
-    const result = computeSuggestion(compoundExercise, 100, [7, 8, 6]);
+    const result = DB.computeSuggestion(compoundExercise, 100, [7, 8, 6]);
     assert.strictEqual(result.action, 'drop');
     assert.ok(result.newWeight < 100);
   });
 
   it('handles bodyweight increase suggestion', () => {
-    const result = computeSuggestion(bodyweightExercise, null, [15, 15, 15]);
+    const result = DB.computeSuggestion(bodyweightExercise, null, [15, 15, 15]);
     assert.strictEqual(result.action, 'increase_reps');
   });
 
   it('handles bodyweight hold suggestion', () => {
-    const result = computeSuggestion(bodyweightExercise, null, [12, 12, 12]);
+    const result = DB.computeSuggestion(bodyweightExercise, null, [12, 12, 12]);
     assert.strictEqual(result.action, 'hold');
   });
 
   it('handles bodyweight below range', () => {
-    const result = computeSuggestion(bodyweightExercise, null, [9, 10, 10]);
+    const result = DB.computeSuggestion(bodyweightExercise, null, [9, 10, 10]);
     assert.strictEqual(result.action, 'hold');
     assert.ok(result.message.includes('below'));
+  });
+});
+
+describe('Manage: Add Exercise & Day', () => {
+
+  beforeEach(() => { resetAndSeed(); });
+
+  it('addExercise adds to an existing day', () => {
+    const days = DB.getDays();
+    const before = DB.getExercises(days[0].id);
+    DB.addExercise(days[0].id, {
+      name: 'Face Pulls', target_sets: 3, rep_range_low: 12, rep_range_high: 15,
+      is_bodyweight: false, is_compound: false, starting_weight: 20,
+    });
+    const after = DB.getExercises(days[0].id);
+    assert.strictEqual(after.length, before.length + 1);
+    assert.strictEqual(after[after.length - 1].name, 'Face Pulls');
+  });
+
+  it('createDay adds a new workout day', () => {
+    const before = DB.getDays();
+    DB.createDay('Day 5 — Arms', [
+      { name: 'Barbell Curl', target_sets: 3, rep_range_low: 8, rep_range_high: 12, is_bodyweight: false, is_compound: false, starting_weight: 30 },
+    ]);
+    const after = DB.getDays();
+    assert.strictEqual(after.length, before.length + 1);
+    assert.strictEqual(after[after.length - 1].name, 'Day 5 — Arms');
+  });
+
+  it('resetDatabase restores defaults', () => {
+    DB.createDay('Extra Day', [
+      { name: 'Test', target_sets: 3, rep_range_low: 8, rep_range_high: 12 },
+    ]);
+    assert.strictEqual(DB.getDays().length, 5);
+    DB.resetDatabase();
+    assert.strictEqual(DB.getDays().length, 4);
   });
 });
