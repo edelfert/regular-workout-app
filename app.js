@@ -55,10 +55,13 @@ function showToast(message, type) {
 // --- View switching ---
 
 function showView(view) {
+  const viewEl = document.getElementById(`view-${view}`);
+  const navEl = document.getElementById(`nav-${view}`);
+  if (!viewEl || !navEl) return;
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(`view-${view}`).style.display = 'block';
-  document.getElementById(`nav-${view}`).classList.add('active');
+  viewEl.style.display = 'block';
+  navEl.classList.add('active');
 
   if (view === 'dashboard') loadDashboard();
   if (view === 'progress') loadProgressSelects();
@@ -153,10 +156,9 @@ function loadExercises(dayId) {
 
     exercises.forEach((ex, index) => {
       const card = document.createElement('div');
-      card.className = 'exercise-card';
+      card.className = 'exercise-card' + (animate ? ' animate-in' : '');
       card.id = `exercise-${ex.id}`;
       if (animate) card.style.animationDelay = `${index * 0.05}s`;
-      else card.style.animation = 'none';
 
       // #13: Use lightweight DB.getLastSession instead of full getProgress
       const lastSession = DB.getLastSession(ex.id);
@@ -455,6 +457,12 @@ function loadProgress(exerciseId) {
 }
 
 function renderChart(data) {
+  if (typeof Chart === 'undefined') {
+    document.getElementById('error-progress').textContent = 'Chart library failed to load. Check your internet connection and reload.';
+    document.getElementById('error-progress').style.display = 'block';
+    document.getElementById('progress-chart-container').style.display = 'none';
+    return;
+  }
   const ctx = document.getElementById('progress-chart').getContext('2d');
   if (progressChart) progressChart.destroy();
 
@@ -638,15 +646,14 @@ function addNewDayExerciseRow() {
   const row = document.createElement('div');
   row.className = 'new-day-exercise-row';
   row.id = `new-day-ex-${newDayExCounter}`;
-  // #15: Use data-role attribute on weight input instead of positional index
   row.innerHTML = `
-    <input type="text" placeholder="Exercise name" required>
-    <input type="number" placeholder="Sets" value="3" min="1" style="width:50px" required>
-    <input type="number" placeholder="Low" min="1" style="width:50px" required>
-    <input type="number" placeholder="High" min="1" style="width:50px" required>
+    <input type="text" placeholder="Exercise name" data-role="name" aria-label="Exercise name">
+    <input type="number" placeholder="Sets" value="3" min="1" style="width:50px" data-role="sets" aria-label="Target sets">
+    <input type="number" placeholder="Low" min="1" style="width:50px" data-role="low" aria-label="Rep range low">
+    <input type="number" placeholder="High" min="1" style="width:50px" data-role="high" aria-label="Rep range high">
     <label class="checkbox-label"><input type="checkbox" class="ndex-bw"> BW</label>
     <label class="checkbox-label"><input type="checkbox" class="ndex-compound"> Compound</label>
-    <input type="number" placeholder="Weight" step="0.5" min="0" style="width:60px" data-role="weight">
+    <input type="number" placeholder="Weight" step="0.5" min="0" style="width:60px" data-role="weight" aria-label="Starting weight">
     <button type="button" class="remove-ex-btn" onclick="this.parentElement.remove()">\u00d7</button>
   `;
   list.appendChild(row);
@@ -669,16 +676,13 @@ document.getElementById('add-day-form').addEventListener('submit', (e) => {
 
   const exercises = [];
   for (const row of rows) {
-    const inputs = row.querySelectorAll('input');
-    const exName = inputs[0].value.trim();
-    const sets = parseInt(inputs[1].value, 10);
-    const low = parseInt(inputs[2].value, 10);
-    const high = parseInt(inputs[3].value, 10);
+    const exName = row.querySelector('[data-role="name"]').value.trim();
+    const sets = parseInt(row.querySelector('[data-role="sets"]').value, 10);
+    const low = parseInt(row.querySelector('[data-role="low"]').value, 10);
+    const high = parseInt(row.querySelector('[data-role="high"]').value, 10);
     const isBw = row.querySelector('.ndex-bw').checked;
     const isCompound = row.querySelector('.ndex-compound').checked;
-    // #15: Use data-role selector instead of positional index
-    const weightInput = row.querySelector('[data-role="weight"]');
-    const weightVal = weightInput ? weightInput.value : '';
+    const weightVal = row.querySelector('[data-role="weight"]').value;
     const weight = weightVal !== '' ? parseFloat(weightVal) : null; // #3: preserve 0
 
     if (!exName) { errorEl.textContent = 'All exercises must have a name.'; errorEl.style.display = 'block'; return; }
@@ -696,6 +700,7 @@ document.getElementById('add-day-form').addEventListener('submit', (e) => {
     e.target.reset();
     document.getElementById('new-day-ex-list').innerHTML = '';
     addNewDayExerciseRow();
+    loadManageSelects(); // refresh "Add Exercise" day dropdown with the new day
   } catch (err) {
     errorEl.textContent = err.message;
     errorEl.style.display = 'block';

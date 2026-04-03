@@ -376,4 +376,44 @@ describe('Validation', () => {
     assert.strictEqual(result.action, 'increase');
     assert.strictEqual(result.newWeight, 25); // rounded to nearest 0.5
   });
+
+  it('rejects semantically invalid date (month 13)', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+    assert.throws(
+      () => DB.logSession(ex.id, '2025-13-01', ex.starting_weight, [10, 10, 10]),
+      /month or day out of range/
+    );
+  });
+
+  it('rejects semantically invalid date (day 0)', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+    assert.throws(
+      () => DB.logSession(ex.id, '2025-01-00', ex.starting_weight, [10, 10, 10]),
+      /month or day out of range/
+    );
+  });
+
+  it('auto-repairs _nextId after loading data with high IDs', () => {
+    // Manually tamper with storage to simulate partial corruption
+    // Must read directly from localStorage (bypassing cache) and write back
+    const raw = localStorage.getItem('workout_tracker_db');
+    assert.ok(raw, 'DB should exist in localStorage after seed');
+    const data = JSON.parse(raw);
+    data._nextId.days = 1; // set too low — should be auto-repaired
+    data._nextId.exercises = 1;
+    data._nextId.sessions = 1;
+    localStorage.setItem('workout_tracker_db', JSON.stringify(data));
+    // Creating a new day triggers load() which should auto-repair _nextId
+    const day = DB.createDay('Test Day', [
+      { name: 'Test Ex', target_sets: 3, rep_range_low: 8, rep_range_high: 12 },
+    ]);
+    const allDays = DB.getDays();
+    const ids = allDays.map(d => d.id);
+    // Verify all IDs are unique
+    assert.strictEqual(new Set(ids).size, ids.length, 'All day IDs should be unique');
+  });
 });

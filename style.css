@@ -175,6 +175,9 @@ nav {
   margin-bottom: 12px;
   box-shadow: var(--shadow-card);
   transition: border-color var(--transition);
+}
+
+.exercise-card.animate-in {
   animation: fadeSlideIn 0.3s ease-out both;
 }
 
@@ -813,6 +816,20 @@ nav {
   background: var(--red-bg);
   color: var(--red);
   border-color: var(--red-border);
+}
+
+/* ---- Screen Reader Only ---- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ---- Empty State ---- */

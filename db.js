@@ -8,9 +8,13 @@ var DB = (() => {
 
   const EMPTY_DB = { workout_days: [], exercises: [], sessions: [], _nextId: { days: 1, exercises: 1, sessions: 1 } };
 
+  let _cache = null;
+  let _cacheRaw = null;
+
   function load() {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return JSON.parse(JSON.stringify(EMPTY_DB));
+    if (!raw) { _cache = null; _cacheRaw = null; return JSON.parse(JSON.stringify(EMPTY_DB)); }
+    if (_cache && _cacheRaw === raw) return _cache;
     try {
       const data = JSON.parse(raw);
       // Basic shape validation
@@ -19,6 +23,15 @@ var DB = (() => {
         localStorage.removeItem(STORAGE_KEY);
         return JSON.parse(JSON.stringify(EMPTY_DB));
       }
+      // Auto-repair _nextId to prevent ID collisions after partial corruption
+      const maxDayId = data.workout_days.reduce((m, d) => Math.max(m, d.id), 0);
+      const maxExId = data.exercises.reduce((m, e) => Math.max(m, e.id), 0);
+      const maxSessId = data.sessions.reduce((m, s) => Math.max(m, s.id), 0);
+      if (data._nextId.days <= maxDayId) data._nextId.days = maxDayId + 1;
+      if (data._nextId.exercises <= maxExId) data._nextId.exercises = maxExId + 1;
+      if (data._nextId.sessions <= maxSessId) data._nextId.sessions = maxSessId + 1;
+      _cache = data;
+      _cacheRaw = raw;
       return data;
     } catch (e) {
       console.warn('Workout DB: JSON parse failed, resetting.', e);
@@ -29,8 +42,13 @@ var DB = (() => {
 
   function save(data) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      const raw = JSON.stringify(data);
+      localStorage.setItem(STORAGE_KEY, raw);
+      _cache = data;
+      _cacheRaw = raw;
     } catch (e) {
+      _cache = null;
+      _cacheRaw = null;
       throw new Error('Failed to save data. Storage may be full.');
     }
   }
@@ -198,10 +216,13 @@ var DB = (() => {
   }
 
   function normalizeDate(date) {
-    // Ensure YYYY-MM-DD with zero-padding
+    // Ensure YYYY-MM-DD with zero-padding and valid ranges
     const match = String(date).match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
     if (!match) throw new Error('Invalid date format. Expected YYYY-MM-DD.');
-    return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+    const m = parseInt(match[2], 10);
+    const d = parseInt(match[3], 10);
+    if (m < 1 || m > 12 || d < 1 || d > 31) throw new Error('Invalid date: month or day out of range.');
+    return `${match[1]}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   }
 
   function logSession(exerciseId, date, weight, reps) {
@@ -262,7 +283,7 @@ var DB = (() => {
         date: s.date,
         weight: s.weight,
         reps: s.reps,
-        avgReps: parseFloat((s.reps.reduce((a, b) => a + b, 0) / s.reps.length).toFixed(1)),
+        avgReps: s.reps.length > 0 ? parseFloat((s.reps.reduce((a, b) => a + b, 0) / s.reps.length).toFixed(1)) : 0,
       }));
 
     let suggestion = null;
@@ -311,6 +332,8 @@ var DB = (() => {
 
   function resetDatabase() {
     localStorage.removeItem(STORAGE_KEY);
+    _cache = null;
+    _cacheRaw = null;
     seed();
   }
 
