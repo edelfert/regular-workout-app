@@ -141,7 +141,7 @@ function loadExercises(dayId) {
       let lastHtml = '';
       if (lastSession) {
         const weightStr = lastSession.weight !== null ? `${lastSession.weight} lbs` : 'Bodyweight';
-        lastHtml = `<div class="last-session-info">Last: ${weightStr} \u2014 ${lastSession.reps.join(', ')} reps on ${lastSession.date}</div>`;
+        lastHtml = `<div class="last-session-info">Last: ${weightStr} \u2014 ${lastSession.reps.join(', ')} reps on ${formatDate(lastSession.date)}</div>`;
       }
 
       // Set inputs — always blank, last session shown as reference above
