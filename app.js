@@ -296,12 +296,15 @@ function logWorkout(exerciseId, targetSets, isBodyweight) {
   try {
     const result = DB.logSession(exerciseId, today, weight, reps);
 
-    btn.textContent = 'Logged \u2713';
     showToast('Workout logged!', 'success');
 
-    // Clear inputs after successful log
-    repInputs.forEach(input => { input.value = ''; });
-    if (wInput) wInput.value = '';
+    // Collapse card into completed state
+    const card = document.getElementById(`exercise-${exerciseId}`);
+    const inputRow = card.querySelector('.input-row');
+    const actions = card.querySelector('.card-actions');
+    if (inputRow) inputRow.style.display = 'none';
+    if (actions) actions.style.display = 'none';
+    errorEl.style.display = 'none';
 
     // Update the last-session-info bar
     const lastEl = document.getElementById(`last-${exerciseId}`);
@@ -311,8 +314,13 @@ function logWorkout(exerciseId, targetSets, isBodyweight) {
       lastEl.style.display = '';
     }
 
-    setTimeout(() => { btn.disabled = false; btn.textContent = 'Log Workout'; }, 2500);
+    // Show completed banner
+    const doneEl = document.createElement('div');
+    doneEl.className = 'logged-banner';
+    doneEl.innerHTML = '<span class="logged-check">\u2713</span> Logged today';
+    card.appendChild(doneEl);
 
+    // Show suggestion below the banner
     if (result.suggestion) {
       suggestionEl.textContent = result.suggestion.message;
       let sugClass = 'suggestion-box';
