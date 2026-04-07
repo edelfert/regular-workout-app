@@ -313,6 +313,47 @@ var DB = (() => {
     return data.sessions.find(s => s.exercise_id === exerciseId && s.date === normalized) || null;
   }
 
+  function getSessionsByDateRange(startDate, endDate) {
+    const data = load();
+    const start = normalizeDate(startDate);
+    const end = normalizeDate(endDate);
+    return data.sessions.filter(s => s.date >= start && s.date <= end).map(s => {
+      const exercise = data.exercises.find(e => e.id === s.exercise_id);
+      return {
+        id: s.id,
+        exercise_id: s.exercise_id,
+        exerciseName: exercise ? exercise.name : 'Unknown',
+        date: s.date,
+        weight: s.weight,
+        reps: s.reps,
+      };
+    });
+  }
+
+  function getWorkoutStreak() {
+    const data = load();
+    if (data.sessions.length === 0) return 0;
+    const dates = [...new Set(data.sessions.map(s => s.date))].sort().reverse();
+    if (dates.length === 0) return 0;
+
+    // Check if the streak includes today or yesterday
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const latestDate = new Date(dates[0] + 'T00:00:00');
+    const diffDays = Math.floor((today - latestDate) / 86400000);
+    if (diffDays > 1) return 0; // streak is broken
+
+    let streak = 1;
+    for (let i = 1; i < dates.length; i++) {
+      const prev = new Date(dates[i - 1] + 'T00:00:00');
+      const curr = new Date(dates[i] + 'T00:00:00');
+      const gap = Math.floor((prev - curr) / 86400000);
+      if (gap === 1) streak++;
+      else break;
+    }
+    return streak;
+  }
+
   function getProgress(exerciseId) {
     const data = load();
     const exercise = data.exercises.find(e => e.id === exerciseId);
@@ -391,6 +432,8 @@ var DB = (() => {
     deleteSession,
     getLastSession,
     getTodaySession,
+    getSessionsByDateRange,
+    getWorkoutStreak,
     getProgress,
     computeSuggestion,
     resetDatabase,

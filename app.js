@@ -65,6 +65,7 @@ function showView(view) {
 
   if (view === 'dashboard') loadDashboard();
   if (view === 'progress') loadProgressSelects();
+  if (view === 'history') loadHistory();
   if (view === 'manage') loadManageSelects();
 }
 
@@ -852,6 +853,192 @@ document.getElementById('reset-db-btn').addEventListener('click', () => {
   showView('dashboard');
   showToast('Database reset to defaults', 'success');
 });
+
+// --- History / Calendar View ---
+
+let calendarYear = new Date().getFullYear();
+let calendarMonth = new Date().getMonth(); // 0-based
+
+function loadHistory() {
+  renderCalendar();
+  renderCalendarStats();
+  document.getElementById('calendar-day-detail').style.display = 'none';
+}
+
+function calendarPrev() {
+  calendarMonth--;
+  if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
+  loadHistory();
+}
+
+function calendarNext() {
+  calendarMonth++;
+  if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+  loadHistory();
+}
+
+function calendarToday() {
+  calendarYear = new Date().getFullYear();
+  calendarMonth = new Date().getMonth();
+  loadHistory();
+}
+
+function renderCalendar() {
+  const label = document.getElementById('calendar-month-label');
+  const grid = document.getElementById('calendar-grid');
+
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  label.textContent = `${monthNames[calendarMonth]} ${calendarYear}`;
+
+  // Get sessions for this month
+  const startDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-01`;
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+  const endDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+  let sessions = [];
+  try {
+    sessions = DB.getSessionsByDateRange(startDate, endDate);
+  } catch (e) { /* empty */ }
+
+  const workoutDates = new Set(sessions.map(s => s.date));
+
+  // Build grid: header row (Mon-Sun) + day cells
+  const firstDay = new Date(calendarYear, calendarMonth, 1).getDay(); // 0=Sun
+  const startOffset = (firstDay === 0 ? 6 : firstDay - 1); // Mon=0
+
+  const today = getLocalDateStr();
+
+  let html = '<div class="calendar-header-row">';
+  ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach(d => {
+    html += `<div class="calendar-header-cell">${d}</div>`;
+  });
+  html += '</div><div class="calendar-body">';
+
+  // Empty cells before first day
+  for (let i = 0; i < startOffset; i++) {
+    html += '<div class="calendar-cell empty"></div>';
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const hasWorkout = workoutDates.has(dateStr);
+    const isToday = dateStr === today;
+    let classes = 'calendar-cell';
+    if (hasWorkout) classes += ' has-workout';
+    if (isToday) classes += ' is-today';
+
+    html += `<div class="${classes}" onclick="showCalendarDay('${dateStr}')">
+      <span class="calendar-day-num">${d}</span>
+      ${hasWorkout ? '<span class="calendar-dot"></span>' : ''}
+    </div>`;
+  }
+
+  html += '</div>';
+  grid.innerHTML = html;
+}
+
+function showCalendarDay(dateStr) {
+  const detail = document.getElementById('calendar-day-detail');
+  let sessions = [];
+  try {
+    sessions = DB.getSessionsByDateRange(dateStr, dateStr);
+  } catch (e) { /* empty */ }
+
+  if (sessions.length === 0) {
+    detail.innerHTML = `<div class="calendar-detail-card"><p class="empty-state">No workouts on ${formatDate(dateStr)}</p></div>`;
+    detail.style.display = 'block';
+    return;
+  }
+
+  // Group by exercise
+  const byExercise = {};
+  sessions.forEach(s => {
+    if (!byExercise[s.exercise_id]) {
+      byExercise[s.exercise_id] = { name: s.exerciseName, weight: s.weight, reps: s.reps, volume: 0 };
+    }
+    const entry = byExercise[s.exercise_id];
+    const w = s.weight || 0;
+    entry.volume += s.reps.reduce((sum, r) => sum + r * w, 0);
+  });
+
+  let totalVolume = 0;
+  let totalSets = 0;
+  let html = `<div class="calendar-detail-card">
+    <h3 class="section-title">${formatDate(dateStr)}</h3>
+    <div class="calendar-detail-list">`;
+
+  Object.values(byExercise).forEach(entry => {
+    const weightStr = entry.weight != null ? `${entry.weight} lbs` : 'BW';
+    totalVolume += entry.volume;
+    totalSets += entry.reps.length;
+    html += `<div class="calendar-detail-item">
+      <span class="calendar-detail-name">${esc(entry.name)}</span>
+      <span class="calendar-detail-info">${weightStr} &mdash; ${entry.reps.join(', ')} reps</span>
+    </div>`;
+  });
+
+  html += `</div>
+    <div class="calendar-detail-summary">
+      <span>${Object.keys(byExercise).length} exercises</span>
+      <span>${totalSets} sets</span>
+      ${totalVolume > 0 ? `<span>${totalVolume.toLocaleString()} lbs vol</span>` : ''}
+    </div>
+  </div>`;
+
+  detail.innerHTML = html;
+  detail.style.display = 'block';
+}
+
+function renderCalendarStats() {
+  const el = document.getElementById('calendar-stats');
+
+  // Get sessions for current displayed month
+  const startDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-01`;
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+  const endDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+  let sessions = [];
+  try {
+    sessions = DB.getSessionsByDateRange(startDate, endDate);
+  } catch (e) { /* empty */ }
+
+  if (sessions.length === 0) {
+    el.innerHTML = '<div class="stats-empty">No workouts logged this month</div>';
+    return;
+  }
+
+  const workoutDays = new Set(sessions.map(s => s.date)).size;
+  const totalSets = sessions.reduce((sum, s) => sum + s.reps.length, 0);
+  const totalVolume = sessions.reduce((sum, s) => {
+    const w = s.weight || 0;
+    return sum + s.reps.reduce((rs, r) => rs + r * w, 0);
+  }, 0);
+
+  let streak = 0;
+  try { streak = DB.getWorkoutStreak(); } catch (e) { /* empty */ }
+
+  el.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value">${workoutDays}</div>
+        <div class="stat-label">Workouts</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${totalSets}</div>
+        <div class="stat-label">Total Sets</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${totalVolume > 0 ? (totalVolume >= 1000 ? Math.round(totalVolume / 1000) + 'k' : totalVolume) : '-'}</div>
+        <div class="stat-label">Volume (lbs)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${streak}</div>
+        <div class="stat-label">Day Streak</div>
+      </div>
+    </div>
+  `;
+}
 
 // --- Exercise Library ---
 

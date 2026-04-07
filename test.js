@@ -279,6 +279,63 @@ describe('getLastSession', () => {
   });
 });
 
+describe('History / Calendar (DB)', () => {
+
+  beforeEach(() => { resetAndSeed(); });
+
+  it('getSessionsByDateRange returns correct sessions within range', () => {
+    const sessions = DB.getSessionsByDateRange('2025-03-01', '2025-03-31');
+    assert.ok(sessions.length > 0, 'Should have sessions in March 2025 from seed');
+    assert.ok(sessions.every(s => s.date >= '2025-03-01' && s.date <= '2025-03-31'));
+  });
+
+  it('getSessionsByDateRange excludes sessions outside range', () => {
+    const sessions = DB.getSessionsByDateRange('2024-01-01', '2024-01-31');
+    assert.strictEqual(sessions.length, 0);
+  });
+
+  it('empty date range returns empty array', () => {
+    const sessions = DB.getSessionsByDateRange('2020-01-01', '2020-01-01');
+    assert.strictEqual(sessions.length, 0);
+  });
+
+  it('getSessionsByDateRange includes exercise name', () => {
+    const sessions = DB.getSessionsByDateRange('2025-03-30', '2025-03-30');
+    assert.ok(sessions.length > 0);
+    assert.ok(sessions[0].exerciseName, 'Session should have exerciseName');
+  });
+
+  it('streak counts consecutive workout days', () => {
+    // Log sessions on consecutive days ending today
+    const today = new Date();
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+
+    for (let i = 2; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      try { DB.logSession(ex.id, dateStr, ex.starting_weight, [10, 10, 10]); } catch (e) { /* dupe */ }
+    }
+    const streak = DB.getWorkoutStreak();
+    assert.ok(streak >= 3, `Expected streak >= 3, got ${streak}`);
+  });
+
+  it('streak breaks on a gap day', () => {
+    // Log only 2 days ago (not yesterday or today)
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[1].id); // Day 2
+    const ex = exercises[0];
+    const d = new Date();
+    d.setDate(d.getDate() - 3);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    try { DB.logSession(ex.id, dateStr, 50, [10, 10, 10]); } catch (e) { /* */ }
+    const streak = DB.getWorkoutStreak();
+    assert.strictEqual(streak, 0, 'Streak should be 0 if last workout was >1 day ago');
+  });
+});
+
 describe('Exercise Library', () => {
 
   it('library has at least 80 exercises', () => {
