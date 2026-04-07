@@ -853,5 +853,182 @@ document.getElementById('reset-db-btn').addEventListener('click', () => {
   showToast('Database reset to defaults', 'success');
 });
 
+// --- Exercise Library ---
+
+let libraryFilter = { search: '', category: '', equipment: '' };
+let libraryDetail = null;
+
+function openLibrary() {
+  const modal = document.getElementById('library-modal');
+  modal.style.display = 'flex';
+  document.getElementById('library-search-input').value = '';
+  libraryFilter = { search: '', category: '', equipment: '' };
+  libraryDetail = null;
+  renderLibraryFilters();
+  renderLibraryResults();
+  document.getElementById('library-search-input').focus();
+
+  document.getElementById('library-search-input').oninput = (e) => {
+    libraryFilter.search = e.target.value.toLowerCase();
+    libraryDetail = null;
+    renderLibraryResults();
+  };
+}
+
+function closeLibrary() {
+  document.getElementById('library-modal').style.display = 'none';
+}
+
+function renderLibraryFilters() {
+  const el = document.getElementById('library-filters');
+  if (typeof EXERCISE_LIBRARY === 'undefined') { el.innerHTML = ''; return; }
+
+  const categories = [...new Set(EXERCISE_LIBRARY.map(e => e.category))].sort();
+  const equipments = [...new Set(EXERCISE_LIBRARY.map(e => e.equipment))].sort();
+
+  let html = '<span class="filter-chip-group">';
+  categories.forEach(cat => {
+    const active = libraryFilter.category === cat ? ' active' : '';
+    html += `<button class="filter-chip${active}" onclick="toggleLibraryFilter('category','${cat}')">${cat}</button>`;
+  });
+  html += '</span><span class="filter-chip-group">';
+  equipments.forEach(eq => {
+    const active = libraryFilter.equipment === eq ? ' active' : '';
+    html += `<button class="filter-chip${active}" onclick="toggleLibraryFilter('equipment','${eq}')">${eq}</button>`;
+  });
+  html += '</span>';
+  el.innerHTML = html;
+}
+
+function toggleLibraryFilter(type, value) {
+  if (libraryFilter[type] === value) {
+    libraryFilter[type] = '';
+  } else {
+    libraryFilter[type] = value;
+  }
+  libraryDetail = null;
+  renderLibraryFilters();
+  renderLibraryResults();
+}
+
+function renderLibraryResults() {
+  const el = document.getElementById('library-results');
+  if (typeof EXERCISE_LIBRARY === 'undefined') {
+    el.innerHTML = '<div class="empty-state"><p>Exercise library not loaded.</p></div>';
+    return;
+  }
+
+  // If showing detail view
+  if (libraryDetail !== null) {
+    renderLibraryDetail(el);
+    return;
+  }
+
+  const filtered = EXERCISE_LIBRARY.filter(ex => {
+    if (libraryFilter.search && !ex.name.toLowerCase().includes(libraryFilter.search) &&
+        !ex.muscleGroup.toLowerCase().includes(libraryFilter.search) &&
+        !ex.category.toLowerCase().includes(libraryFilter.search)) return false;
+    if (libraryFilter.category && ex.category !== libraryFilter.category) return false;
+    if (libraryFilter.equipment && ex.equipment !== libraryFilter.equipment) return false;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    el.innerHTML = '<div class="empty-state"><p>No exercises match your filters.</p></div>';
+    return;
+  }
+
+  let html = `<div class="library-count">${filtered.length} exercise${filtered.length !== 1 ? 's' : ''}</div>`;
+  filtered.forEach((ex, idx) => {
+    const badgeClass = ex.isCompound ? 'badge-compound' : 'badge-isolation';
+    const badgeText = ex.isCompound ? 'Compound' : 'Isolation';
+    html += `
+      <div class="library-item" onclick="showLibraryDetail(${idx}, '${esc(libraryFilter.search)}', '${esc(libraryFilter.category)}', '${esc(libraryFilter.equipment)}')">
+        <div class="library-item-header">
+          <span class="library-item-name">${esc(ex.name)}</span>
+          <div class="library-item-badges">
+            <span class="exercise-badge ${badgeClass}">${badgeText}</span>
+          </div>
+        </div>
+        <div class="library-item-desc">${esc(ex.description)}</div>
+        <div class="library-item-meta">${esc(ex.muscleGroup)} &middot; ${esc(ex.equipment)} &middot; ${ex.defaultSets}&times;${ex.defaultRepRangeLow}-${ex.defaultRepRangeHigh}</div>
+      </div>
+    `;
+  });
+  el.innerHTML = html;
+}
+
+function showLibraryDetail(filteredIndex) {
+  const filtered = EXERCISE_LIBRARY.filter(ex => {
+    if (libraryFilter.search && !ex.name.toLowerCase().includes(libraryFilter.search) &&
+        !ex.muscleGroup.toLowerCase().includes(libraryFilter.search) &&
+        !ex.category.toLowerCase().includes(libraryFilter.search)) return false;
+    if (libraryFilter.category && ex.category !== libraryFilter.category) return false;
+    if (libraryFilter.equipment && ex.equipment !== libraryFilter.equipment) return false;
+    return true;
+  });
+  libraryDetail = filtered[filteredIndex] || null;
+  renderLibraryResults();
+}
+
+function renderLibraryDetail(el) {
+  const ex = libraryDetail;
+  if (!ex) return;
+
+  // Build day select
+  if (days.length === 0) days = DB.getDays();
+  let dayOptions = '<option value="">Select day...</option>';
+  days.forEach(d => {
+    dayOptions += `<option value="${d.id}">${esc(d.name)}</option>`;
+  });
+
+  const secondary = ex.secondaryMuscles.length > 0 ? ex.secondaryMuscles.join(', ') : 'None';
+  const tipsHtml = ex.tips ? `<div class="library-detail-tips">${esc(ex.tips)}</div>` : '';
+
+  el.innerHTML = `
+    <button class="btn btn-ghost" onclick="libraryDetail=null;renderLibraryResults()" style="margin-bottom:12px;">&larr; Back to results</button>
+    <div class="library-detail">
+      <h3>${esc(ex.name)}</h3>
+      <div class="library-detail-muscles">
+        <strong>Primary:</strong> ${esc(ex.muscleGroup)} &middot;
+        <strong>Secondary:</strong> ${esc(secondary)} &middot;
+        <strong>Equipment:</strong> ${esc(ex.equipment)}
+      </div>
+      <div class="library-detail-desc">${esc(ex.description)}</div>
+      ${tipsHtml}
+      <div class="library-add-form">
+        <div class="select-wrapper">
+          <select id="library-add-day" aria-label="Select day to add exercise">${dayOptions}</select>
+        </div>
+        <button class="btn btn-primary" onclick="addFromLibrary()">Add to Day</button>
+      </div>
+    </div>
+  `;
+}
+
+function addFromLibrary() {
+  const ex = libraryDetail;
+  if (!ex) return;
+  const dayId = parseInt(document.getElementById('library-add-day').value, 10);
+  if (!dayId) { showToast('Select a day first', 'error'); return; }
+
+  try {
+    DB.addExercise(dayId, {
+      name: ex.name,
+      target_sets: ex.defaultSets,
+      rep_range_low: ex.defaultRepRangeLow,
+      rep_range_high: ex.defaultRepRangeHigh,
+      is_bodyweight: ex.equipment === 'bodyweight',
+      is_compound: ex.isCompound,
+      starting_weight: null,
+    });
+    showToast(`"${ex.name}" added!`, 'success');
+    days = [];
+    closeLibrary();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
 // --- Init ---
 loadDashboard();

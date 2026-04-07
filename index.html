@@ -89,6 +89,10 @@
         <p class="view-subtitle">Customize your workout days and exercises</p>
       </div>
 
+      <div class="manage-actions">
+        <button class="btn btn-primary" onclick="openLibrary()">Browse Exercise Library</button>
+      </div>
+
       <section class="manage-section">
         <h3 class="section-title">Add Exercise to Existing Day</h3>
         <form id="add-exercise-form" class="manage-form">
@@ -158,6 +162,22 @@
     </div>
   </main>
 
+  <!-- Library modal -->
+  <div id="library-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeLibrary()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Exercise Library</h2>
+        <button class="modal-close" onclick="closeLibrary()" aria-label="Close">&times;</button>
+      </div>
+      <div class="library-search">
+        <input type="text" id="library-search-input" placeholder="Search exercises..." aria-label="Search exercises">
+      </div>
+      <div class="library-filters" id="library-filters"></div>
+      <div class="library-results" id="library-results"></div>
+    </div>
+  </div>
+
+  <script src="exercise-library.js"></script>
   <script src="db.js"></script>
   <script src="timer.js"></script>
   <script src="app.js"></script>

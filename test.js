@@ -16,6 +16,10 @@ globalThis.localStorage = {
 const dbCode = fs.readFileSync(path.join(__dirname, 'db.js'), 'utf8');
 eval(dbCode);
 
+// Load the exercise library
+const libCode = fs.readFileSync(path.join(__dirname, 'exercise-library.js'), 'utf8');
+eval(libCode);
+
 function resetAndSeed() {
   localStorage.clear();
   DB.seed();
@@ -272,6 +276,60 @@ describe('getLastSession', () => {
     const exercises = DB.getExercises(days[1].id); // Day 2 has no seed sessions
     const last = DB.getLastSession(exercises[0].id);
     assert.strictEqual(last, null);
+  });
+});
+
+describe('Exercise Library', () => {
+
+  it('library has at least 80 exercises', () => {
+    assert.ok(EXERCISE_LIBRARY.length >= 80, `Expected >=80, got ${EXERCISE_LIBRARY.length}`);
+  });
+
+  it('all entries have required fields', () => {
+    const required = ['name', 'category', 'equipment', 'muscleGroup', 'secondaryMuscles',
+      'isCompound', 'defaultSets', 'defaultRepRangeLow', 'defaultRepRangeHigh', 'description'];
+    for (const ex of EXERCISE_LIBRARY) {
+      for (const field of required) {
+        assert.ok(ex[field] !== undefined, `${ex.name || 'unnamed'} missing ${field}`);
+      }
+    }
+  });
+
+  it('entries have valid categories', () => {
+    const valid = ['chest', 'back', 'shoulders', 'legs', 'arms', 'core'];
+    for (const ex of EXERCISE_LIBRARY) {
+      assert.ok(valid.includes(ex.category), `${ex.name} has invalid category: ${ex.category}`);
+    }
+  });
+
+  it('entries have valid equipment types', () => {
+    const valid = ['barbell', 'dumbbell', 'machine', 'cable', 'bodyweight', 'band'];
+    for (const ex of EXERCISE_LIBRARY) {
+      assert.ok(valid.includes(ex.equipment), `${ex.name} has invalid equipment: ${ex.equipment}`);
+    }
+  });
+
+  it('no duplicate exercise names', () => {
+    const names = EXERCISE_LIBRARY.map(e => e.name.toLowerCase());
+    const unique = new Set(names);
+    assert.strictEqual(names.length, unique.size, 'Duplicate exercise names found');
+  });
+
+  it('adding from library creates valid exercise in DB', () => {
+    resetAndSeed();
+    const libEx = EXERCISE_LIBRARY[0];
+    const days = DB.getDays();
+    const added = DB.addExercise(days[0].id, {
+      name: libEx.name,
+      target_sets: libEx.defaultSets,
+      rep_range_low: libEx.defaultRepRangeLow,
+      rep_range_high: libEx.defaultRepRangeHigh,
+      is_bodyweight: libEx.equipment === 'bodyweight',
+      is_compound: libEx.isCompound,
+      starting_weight: null,
+    });
+    assert.strictEqual(added.name, libEx.name);
+    assert.strictEqual(added.target_sets, libEx.defaultSets);
   });
 });
 
