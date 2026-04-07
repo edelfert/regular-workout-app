@@ -872,6 +872,38 @@ nav {
   .form-group-row { grid-column: span 1; }
 }
 
+/* ---- Personal Records / 1RM ---- */
+
+.pr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.pr-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.pr-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--yellow);
+  margin-bottom: 2px;
+}
+
+.pr-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 /* ---- Calendar / History ---- */
 
 .calendar-nav {

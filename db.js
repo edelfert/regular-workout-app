@@ -379,6 +379,79 @@ var DB = (() => {
     return { exercise, sessions, suggestion };
   }
 
+  // --- 1RM Calculator (Epley formula) ---
+
+  function computeE1RM(weight, reps) {
+    if (reps <= 0 || weight <= 0) return 0;
+    if (reps === 1) return weight;
+    return parseFloat((weight * (1 + reps / 30)).toFixed(1));
+  }
+
+  function getEstimated1RM(exerciseId) {
+    const data = load();
+    const exercise = data.exercises.find(e => e.id === exerciseId);
+    if (!exercise || exercise.is_bodyweight) return null;
+
+    const sessions = data.sessions.filter(s => s.exercise_id === exerciseId);
+    if (sessions.length === 0) return null;
+
+    let best = 0;
+    for (const s of sessions) {
+      if (s.weight == null || s.weight <= 0) continue;
+      for (const r of s.reps) {
+        const e1rm = computeE1RM(s.weight, r);
+        if (e1rm > best) best = e1rm;
+      }
+    }
+    return best > 0 ? best : null;
+  }
+
+  // --- Personal Records ---
+
+  function getPersonalRecords(exerciseId) {
+    const data = load();
+    const exercise = data.exercises.find(e => e.id === exerciseId);
+    if (!exercise) return null;
+
+    const sessions = data.sessions.filter(s => s.exercise_id === exerciseId);
+    if (sessions.length === 0) return null;
+
+    let maxWeight = null;
+    let maxReps = null;
+    let maxVolume = null;
+    let max1RM = null;
+
+    for (const s of sessions) {
+      // Heaviest weight
+      if (s.weight != null && (maxWeight === null || s.weight > maxWeight.value)) {
+        maxWeight = { value: s.weight, date: s.date, sessionId: s.id };
+      }
+      // Highest single-set reps
+      for (const r of s.reps) {
+        if (maxReps === null || r > maxReps.value) {
+          maxReps = { value: r, date: s.date, sessionId: s.id };
+        }
+      }
+      // Session volume
+      const w = s.weight || 0;
+      const vol = s.reps.reduce((sum, r) => sum + r * w, 0);
+      if (maxVolume === null || vol > maxVolume.value) {
+        maxVolume = { value: vol, date: s.date, sessionId: s.id };
+      }
+      // Estimated 1RM
+      if (s.weight != null && s.weight > 0) {
+        for (const r of s.reps) {
+          const e1rm = computeE1RM(s.weight, r);
+          if (max1RM === null || e1rm > max1RM.value) {
+            max1RM = { value: e1rm, date: s.date, sessionId: s.id };
+          }
+        }
+      }
+    }
+
+    return { maxWeight, maxReps, maxVolume, max1RM };
+  }
+
   // --- Progressive Overload ---
 
   function computeSuggestion(exercise, currentWeight, reps) {
@@ -435,6 +508,9 @@ var DB = (() => {
     getSessionsByDateRange,
     getWorkoutStreak,
     getProgress,
+    computeE1RM,
+    getEstimated1RM,
+    getPersonalRecords,
     computeSuggestion,
     resetDatabase,
   };

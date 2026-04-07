@@ -279,6 +279,106 @@ describe('getLastSession', () => {
   });
 });
 
+describe('1RM Calculator', () => {
+
+  beforeEach(() => { resetAndSeed(); });
+
+  it('Epley formula calculates correctly (100 lbs x 10 reps = 133.3)', () => {
+    const result = DB.computeE1RM(100, 10);
+    assert.strictEqual(result, 133.3);
+  });
+
+  it('1 rep means 1RM equals the weight', () => {
+    assert.strictEqual(DB.computeE1RM(200, 1), 200);
+  });
+
+  it('getEstimated1RM returns highest 1RM across sessions', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+    // Seed has session at 90 lbs x [10,10,10] -> 1RM = 90*(1+10/30) = 120
+    const e1rm = DB.getEstimated1RM(ex.id);
+    assert.ok(e1rm > 0);
+    assert.strictEqual(e1rm, 120);
+  });
+
+  it('returns null for bodyweight exercises', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const bw = exercises.find(e => e.is_bodyweight);
+    assert.strictEqual(DB.getEstimated1RM(bw.id), null);
+  });
+});
+
+describe('Volume Tracking', () => {
+
+  beforeEach(() => { resetAndSeed(); });
+
+  it('volume calculation: sum(weight x reps per set)', () => {
+    // Seed session: Leg Press 90 lbs x [10,10,10] = 90*30 = 2700
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => e.name === 'Leg Press');
+    const progress = DB.getProgress(ex.id);
+    const session = progress.sessions[0];
+    const vol = session.reps.reduce((sum, r) => sum + r * session.weight, 0);
+    assert.strictEqual(vol, 2700);
+  });
+
+  it('bodyweight exercises with no weight return 0 volume', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const bw = exercises.find(e => e.is_bodyweight);
+    DB.logSession(bw.id, '2025-04-01', null, [12, 12, 12]);
+    const progress = DB.getProgress(bw.id);
+    const session = progress.sessions.find(s => s.date === '2025-04-01');
+    const vol = session.reps.reduce((sum, r) => sum + r * (session.weight || 0), 0);
+    assert.strictEqual(vol, 0);
+  });
+});
+
+describe('Personal Records', () => {
+
+  beforeEach(() => { resetAndSeed(); });
+
+  it('getPersonalRecords returns correct PR values', () => {
+    const days = DB.getDays();
+    const ex = DB.getExercises(days[0].id).find(e => e.name === 'Leg Press');
+    const prs = DB.getPersonalRecords(ex.id);
+    assert.ok(prs);
+    assert.strictEqual(prs.maxWeight.value, 90);
+    assert.strictEqual(prs.maxReps.value, 10);
+    assert.strictEqual(prs.maxVolume.value, 2700);
+  });
+
+  it('PR detection works when logging a better session', () => {
+    const days = DB.getDays();
+    const ex = DB.getExercises(days[0].id).find(e => e.name === 'Leg Press');
+    DB.logSession(ex.id, '2025-04-01', 100, [12, 12, 12]);
+    const prs = DB.getPersonalRecords(ex.id);
+    assert.strictEqual(prs.maxWeight.value, 100);
+    assert.strictEqual(prs.maxReps.value, 12);
+  });
+
+  it('PRs recalculate when session is deleted', () => {
+    const days = DB.getDays();
+    const ex = DB.getExercises(days[0].id).find(e => e.name === 'Leg Press');
+    const result = DB.logSession(ex.id, '2025-04-01', 200, [5, 5, 5]);
+    let prs = DB.getPersonalRecords(ex.id);
+    assert.strictEqual(prs.maxWeight.value, 200);
+    DB.deleteSession(result.id);
+    prs = DB.getPersonalRecords(ex.id);
+    assert.strictEqual(prs.maxWeight.value, 90); // back to seed data
+  });
+
+  it('no PRs for exercise with no sessions', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[1].id); // Day 2 has no sessions
+    const prs = DB.getPersonalRecords(exercises[0].id);
+    assert.strictEqual(prs, null);
+  });
+});
+
 describe('History / Calendar (DB)', () => {
 
   beforeEach(() => { resetAndSeed(); });

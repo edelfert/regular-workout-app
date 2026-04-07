@@ -490,6 +490,7 @@ function loadProgressSelects() {
       // #11: Destroy chart when changing day to free memory
       if (progressChart) { progressChart.destroy(); progressChart = null; }
       document.getElementById('progress-chart-container').style.display = 'none';
+      document.getElementById('progress-records').style.display = 'none';
       document.getElementById('progress-suggestion').style.display = 'none';
       document.getElementById('progress-history').style.display = 'none';
       document.getElementById('error-progress').style.display = 'none';
@@ -549,6 +550,23 @@ function loadProgress(exerciseId) {
     chartContainer.style.display = 'block';
     renderChart(data);
 
+    // 1RM and PR display
+    const prSection = document.getElementById('progress-records');
+    const e1rm = DB.getEstimated1RM(exerciseId);
+    const prs = DB.getPersonalRecords(exerciseId);
+    if ((e1rm || prs) && !data.exercise.is_bodyweight) {
+      let prHtml = '<div class="pr-grid">';
+      if (e1rm) prHtml += `<div class="pr-card"><div class="pr-value">${e1rm}</div><div class="pr-label">Est. 1RM (lbs)</div></div>`;
+      if (prs && prs.maxWeight) prHtml += `<div class="pr-card"><div class="pr-value">${prs.maxWeight.value}</div><div class="pr-label">Max Weight</div></div>`;
+      if (prs && prs.maxReps) prHtml += `<div class="pr-card"><div class="pr-value">${prs.maxReps.value}</div><div class="pr-label">Max Reps</div></div>`;
+      if (prs && prs.maxVolume && prs.maxVolume.value > 0) prHtml += `<div class="pr-card"><div class="pr-value">${prs.maxVolume.value.toLocaleString()}</div><div class="pr-label">Best Volume</div></div>`;
+      prHtml += '</div>';
+      prSection.innerHTML = prHtml;
+      prSection.style.display = 'block';
+    } else {
+      prSection.style.display = 'none';
+    }
+
     // Suggestion
     if (data.suggestion) {
       suggestionEl.textContent = data.suggestion.message;
@@ -559,11 +577,12 @@ function loadProgress(exerciseId) {
       suggestionEl.style.display = 'block';
     }
 
-    // History table
+    // History table with volume column
     historyEl.style.display = 'block';
     const tbody = document.querySelector('#progress-table tbody');
     tbody.innerHTML = '';
     data.sessions.forEach(s => {
+      const vol = s.weight != null ? s.reps.reduce((sum, r) => sum + r * s.weight, 0) : 0;
       const tr = document.createElement('tr');
       const tdDate = document.createElement('td');
       tdDate.textContent = formatDate(s.date);
@@ -573,13 +592,15 @@ function loadProgress(exerciseId) {
       tdReps.textContent = s.reps.join(', ');
       const tdAvg = document.createElement('td');
       tdAvg.textContent = s.avgReps;
+      const tdVol = document.createElement('td');
+      tdVol.textContent = vol > 0 ? vol.toLocaleString() : '-';
       const tdAction = document.createElement('td');
       const delBtn = document.createElement('button');
       delBtn.className = 'delete-btn';
       delBtn.textContent = 'Delete';
       delBtn.onclick = () => deleteSession(s.id, exerciseId);
       tdAction.appendChild(delBtn);
-      tr.append(tdDate, tdWeight, tdReps, tdAvg, tdAction);
+      tr.append(tdDate, tdWeight, tdReps, tdAvg, tdVol, tdAction);
       tbody.appendChild(tr);
     });
   } catch (err) {
@@ -603,6 +624,17 @@ function renderChart(data) {
   const avgReps = data.sessions.map(s => s.avgReps);
   const isBodyweight = data.exercise.is_bodyweight;
 
+  // Compute per-session estimated 1RM (best set)
+  const e1rmData = data.sessions.map(s => {
+    if (s.weight == null || s.weight <= 0) return null;
+    let best = 0;
+    for (const r of s.reps) {
+      const e = DB.computeE1RM(s.weight, r);
+      if (e > best) best = e;
+    }
+    return best > 0 ? best : null;
+  });
+
   const datasets = [];
 
   if (!isBodyweight) {
@@ -619,6 +651,24 @@ function renderChart(data) {
       pointBackgroundColor: '#4f6ef7',
       borderWidth: 2.5,
     });
+
+    // 1RM trend line
+    if (e1rmData.some(v => v !== null)) {
+      datasets.push({
+        label: 'Est. 1RM',
+        data: e1rmData,
+        borderColor: '#fbbf24',
+        backgroundColor: 'transparent',
+        yAxisID: 'y',
+        tension: 0.35,
+        fill: false,
+        borderDash: [6, 3],
+        pointRadius: data.sessions.length === 1 ? 5 : 3,
+        pointHoverRadius: 6,
+        pointBackgroundColor: '#fbbf24',
+        borderWidth: 2,
+      });
+    }
   }
 
   datasets.push({
