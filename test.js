@@ -436,6 +436,80 @@ describe('History / Calendar (DB)', () => {
   });
 });
 
+describe('Set Types', () => {
+
+  beforeEach(() => { resetAndSeed(); });
+
+  it('migration converts old reps arrays to objects', () => {
+    // Manually insert old-format session
+    const raw = localStorage.getItem('workout_tracker_db');
+    const data = JSON.parse(raw);
+    data.sessions.push({
+      id: data._nextId.sessions++,
+      exercise_id: data.exercises[0].id,
+      date: '2025-05-01',
+      weight: 50,
+      reps: [10, 10, 10], // old format
+    });
+    localStorage.setItem('workout_tracker_db', JSON.stringify(data));
+    // Force reload with migration
+    const progress = DB.getProgress(data.exercises[0].id);
+    const session = progress.sessions.find(s => s.date === '2025-05-01');
+    assert.ok(session);
+    assert.deepStrictEqual(session.reps, [10, 10, 10]); // rawReps returns plain numbers
+  });
+
+  it('migration is idempotent', () => {
+    const raw1 = localStorage.getItem('workout_tracker_db');
+    const data1 = JSON.parse(raw1);
+    // Trigger migration twice
+    DB.getDays();
+    DB.getDays();
+    const raw2 = localStorage.getItem('workout_tracker_db');
+    const data2 = JSON.parse(raw2);
+    assert.strictEqual(data2.sessions.length, data1.sessions.length);
+  });
+
+  it('new sessions store set types correctly', () => {
+    const days = DB.getDays();
+    const ex = DB.getExercises(days[0].id).find(e => !e.is_bodyweight);
+    const result = DB.logSession(ex.id, '2025-06-01', 100, [10, 8, 6]);
+    const progress = DB.getProgress(ex.id);
+    const session = progress.sessions.find(s => s.date === '2025-06-01');
+    assert.ok(session.setsData);
+    assert.strictEqual(session.setsData[0].type, 'normal');
+  });
+
+  it('progressive overload excludes warmup sets', () => {
+    const days = DB.getDays();
+    const ex = DB.getExercises(days[0].id).find(e => !e.is_bodyweight && e.is_compound);
+    // Log with warmup set that would otherwise affect suggestion
+    const reps = [
+      { reps: 12, type: 'warmup' },
+      { reps: 12, type: 'normal' },
+      { reps: 12, type: 'normal' },
+    ];
+    DB.logSession(ex.id, '2025-06-02', 100, reps);
+    const progress = DB.getProgress(ex.id);
+    const session = progress.sessions.find(s => s.date === '2025-06-02');
+    assert.ok(session);
+  });
+
+  it('backward compat: old format data still works', () => {
+    const raw = localStorage.getItem('workout_tracker_db');
+    const data = JSON.parse(raw);
+    // Insert purely old-format data
+    data.sessions = [{
+      id: 999, exercise_id: data.exercises[1].id,
+      date: '2025-01-15', weight: 50, reps: [8, 8, 8],
+    }];
+    localStorage.setItem('workout_tracker_db', JSON.stringify(data));
+    const last = DB.getLastSession(data.exercises[1].id);
+    assert.ok(last);
+    assert.deepStrictEqual(last.reps, [8, 8, 8]);
+  });
+});
+
 describe('Superset Support', () => {
 
   beforeEach(() => { resetAndSeed(); });

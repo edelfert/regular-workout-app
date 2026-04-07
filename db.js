@@ -42,6 +42,20 @@ var DB = (() => {
     }
   }
 
+  // Helper to extract raw rep numbers from set data (handles both old and new format)
+  function rawReps(reps) {
+    if (!Array.isArray(reps) || reps.length === 0) return [];
+    if (typeof reps[0] === 'number') return reps;
+    return reps.map(r => r.reps);
+  }
+
+  // Filter out warmup sets for progressive overload calculations
+  function workingReps(reps) {
+    if (!Array.isArray(reps) || reps.length === 0) return [];
+    if (typeof reps[0] === 'number') return reps;
+    return reps.filter(r => r.type !== 'warmup').map(r => r.reps);
+  }
+
   function migrate(data) {
     let changed = false;
     for (const ex of data.exercises) {
@@ -51,6 +65,13 @@ var DB = (() => {
       }
       if (ex.superset_group === undefined) {
         ex.superset_group = null;
+        changed = true;
+      }
+    }
+    // Migrate reps arrays from plain numbers to objects with type
+    for (const s of data.sessions) {
+      if (Array.isArray(s.reps) && s.reps.length > 0 && typeof s.reps[0] === 'number') {
+        s.reps = s.reps.map(r => ({ reps: r, type: 'normal' }));
         changed = true;
       }
     }
@@ -145,12 +166,12 @@ var DB = (() => {
     // Historical data: 2025-03-30 (Day 1)
     const day1Exercises = data.exercises.filter(e => e.day_id === 1);
     const historical = {
-      'Push-Ups':       { weight: null, reps: [12, 12, 12] },
-      'Leg Press':      { weight: 90,   reps: [10, 10, 10] },
-      'Bicep Curls':    { weight: 20,   reps: [8, 8, 8] },
-      'Hip Adductors':  { weight: 90,   reps: [15, 15, 15] },
-      'Overhead Press': { weight: 75,   reps: [10, 10, 10] },
-      'Calf Raises':    { weight: 55,   reps: [15, 15, 15] },
+      'Push-Ups':       { weight: null, reps: [{reps:12,type:'normal'},{reps:12,type:'normal'},{reps:12,type:'normal'}] },
+      'Leg Press':      { weight: 90,   reps: [{reps:10,type:'normal'},{reps:10,type:'normal'},{reps:10,type:'normal'}] },
+      'Bicep Curls':    { weight: 20,   reps: [{reps:8,type:'normal'},{reps:8,type:'normal'},{reps:8,type:'normal'}] },
+      'Hip Adductors':  { weight: 90,   reps: [{reps:15,type:'normal'},{reps:15,type:'normal'},{reps:15,type:'normal'}] },
+      'Overhead Press': { weight: 75,   reps: [{reps:10,type:'normal'},{reps:10,type:'normal'},{reps:10,type:'normal'}] },
+      'Calf Raises':    { weight: 55,   reps: [{reps:15,type:'normal'},{reps:15,type:'normal'},{reps:15,type:'normal'}] },
     };
 
     for (const ex of day1Exercises) {
@@ -324,8 +345,9 @@ var DB = (() => {
     if (!exercise) throw new Error('Exercise not found');
 
     // #7: validate reps length matches target sets
-    if (reps.length !== exercise.target_sets) {
-      throw new Error(`Expected ${exercise.target_sets} sets but got ${reps.length}`);
+    const repsCount = Array.isArray(reps) ? reps.length : 0;
+    if (repsCount !== exercise.target_sets) {
+      throw new Error(`Expected ${exercise.target_sets} sets but got ${repsCount}`);
     }
 
     const normalizedDate = normalizeDate(date);
@@ -333,17 +355,19 @@ var DB = (() => {
     if (duplicate) throw new Error('Session already logged for this exercise on this date. Delete it first or choose a different date.');
 
     const normalizedWeight = exercise.is_bodyweight ? null : weight; // #4: normalize before storing and computing
+    // Convert plain number reps to objects with type
+    const normalizedReps = reps.map(r => typeof r === 'number' ? { reps: r, type: 'normal' } : r);
     const sessId = data._nextId.sessions++;
     data.sessions.push({
       id: sessId,
       exercise_id: exerciseId,
       date: normalizedDate,
       weight: normalizedWeight,
-      reps,
+      reps: normalizedReps,
     });
     save(data);
 
-    return { id: sessId, suggestion: computeSuggestion(exercise, normalizedWeight, reps) };
+    return { id: sessId, suggestion: computeSuggestion(exercise, normalizedWeight, normalizedReps) };
   }
 
   function deleteSession(id) {
@@ -360,13 +384,17 @@ var DB = (() => {
     const sessions = data.sessions
       .filter(s => s.exercise_id === exerciseId)
       .sort((a, b) => b.date.localeCompare(a.date)); // newest first
-    return sessions.length > 0 ? sessions[0] : null;
+    if (sessions.length === 0) return null;
+    const s = sessions[0];
+    return { ...s, reps: rawReps(s.reps), setsData: s.reps };
   }
 
   function getTodaySession(exerciseId, date) {
     const data = load();
     const normalized = normalizeDate(date);
-    return data.sessions.find(s => s.exercise_id === exerciseId && s.date === normalized) || null;
+    const s = data.sessions.find(s => s.exercise_id === exerciseId && s.date === normalized);
+    if (!s) return null;
+    return { ...s, reps: rawReps(s.reps), setsData: s.reps };
   }
 
   function getSessionsByDateRange(startDate, endDate) {
@@ -381,7 +409,7 @@ var DB = (() => {
         exerciseName: exercise ? exercise.name : 'Unknown',
         date: s.date,
         weight: s.weight,
-        reps: s.reps,
+        reps: rawReps(s.reps),
       };
     });
   }
@@ -418,18 +446,24 @@ var DB = (() => {
     const sessions = data.sessions
       .filter(s => s.exercise_id === exerciseId)
       .sort((a, b) => a.date.localeCompare(b.date))
-      .map(s => ({
-        id: s.id,
-        date: s.date,
-        weight: s.weight,
-        reps: s.reps,
-        avgReps: s.reps.length > 0 ? parseFloat((s.reps.reduce((a, b) => a + b, 0) / s.reps.length).toFixed(1)) : 0,
-      }));
+      .map(s => {
+        const rr = rawReps(s.reps);
+        return {
+          id: s.id,
+          date: s.date,
+          weight: s.weight,
+          reps: rr,
+          setsData: s.reps, // full set data with types
+          avgReps: rr.length > 0 ? parseFloat((rr.reduce((a, b) => a + b, 0) / rr.length).toFixed(1)) : 0,
+        };
+      });
 
     let suggestion = null;
     if (sessions.length > 0) {
       const last = sessions[sessions.length - 1];
-      suggestion = computeSuggestion(exercise, last.weight, last.reps);
+      // Use working reps (exclude warmup) for progressive overload
+      const wr = workingReps(data.sessions.find(s => s.id === last.id).reps);
+      suggestion = computeSuggestion(exercise, last.weight, wr.length > 0 ? wr : last.reps);
     }
 
     return { exercise, sessions, suggestion };
@@ -454,7 +488,7 @@ var DB = (() => {
     let best = 0;
     for (const s of sessions) {
       if (s.weight == null || s.weight <= 0) continue;
-      for (const r of s.reps) {
+      for (const r of rawReps(s.reps)) {
         const e1rm = computeE1RM(s.weight, r);
         if (e1rm > best) best = e1rm;
       }
@@ -478,25 +512,26 @@ var DB = (() => {
     let max1RM = null;
 
     for (const s of sessions) {
+      const rr = rawReps(s.reps);
       // Heaviest weight
       if (s.weight != null && (maxWeight === null || s.weight > maxWeight.value)) {
         maxWeight = { value: s.weight, date: s.date, sessionId: s.id };
       }
       // Highest single-set reps
-      for (const r of s.reps) {
+      for (const r of rr) {
         if (maxReps === null || r > maxReps.value) {
           maxReps = { value: r, date: s.date, sessionId: s.id };
         }
       }
       // Session volume
       const w = s.weight || 0;
-      const vol = s.reps.reduce((sum, r) => sum + r * w, 0);
+      const vol = rr.reduce((sum, r) => sum + r * w, 0);
       if (maxVolume === null || vol > maxVolume.value) {
         maxVolume = { value: vol, date: s.date, sessionId: s.id };
       }
       // Estimated 1RM
       if (s.weight != null && s.weight > 0) {
-        for (const r of s.reps) {
+        for (const r of rr) {
           const e1rm = computeE1RM(s.weight, r);
           if (max1RM === null || e1rm > max1RM.value) {
             max1RM = { value: e1rm, date: s.date, sessionId: s.id };
@@ -510,7 +545,8 @@ var DB = (() => {
 
   // --- Progressive Overload ---
 
-  function computeSuggestion(exercise, currentWeight, reps) {
+  function computeSuggestion(exercise, currentWeight, repsInput) {
+    const reps = rawReps(repsInput);
     if (exercise.is_bodyweight) {
       const allAtTop = reps.every(r => r >= exercise.rep_range_high);
       const anyBelowBottom = reps.some(r => r < exercise.rep_range_low);
@@ -553,14 +589,15 @@ var DB = (() => {
     for (const s of data.sessions) {
       const exercise = data.exercises.find(e => e.id === s.exercise_id);
       const day = exercise ? data.workout_days.find(d => d.id === exercise.day_id) : null;
+      const rr = rawReps(s.reps);
       const w = s.weight || 0;
-      const vol = s.reps.reduce((sum, r) => sum + r * w, 0);
+      const vol = rr.reduce((sum, r) => sum + r * w, 0);
       rows.push([
         s.date,
         day ? day.name : '',
         exercise ? exercise.name : '',
         s.weight != null ? s.weight : 'BW',
-        '"' + s.reps.join(', ') + '"',
+        '"' + rr.join(', ') + '"',
         vol,
       ]);
     }
