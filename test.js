@@ -275,6 +275,69 @@ describe('getLastSession', () => {
   });
 });
 
+describe('Rest Timer (DB)', () => {
+
+  beforeEach(() => { resetAndSeed(); });
+
+  it('seed sets rest_seconds defaults: compound=90, isolation=60, bodyweight=0', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const bw = exercises.find(e => e.is_bodyweight);
+    const compound = exercises.find(e => !e.is_bodyweight && e.is_compound);
+    const isolation = exercises.find(e => !e.is_bodyweight && !e.is_compound);
+    assert.strictEqual(bw.rest_seconds, 0);
+    assert.strictEqual(compound.rest_seconds, 90);
+    assert.strictEqual(isolation.rest_seconds, 60);
+  });
+
+  it('custom rest_seconds persists after save/reload', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises[0];
+    DB.updateExercise(ex.id, { rest_seconds: 120 });
+    const updated = DB.getExercises(days[0].id).find(e => e.id === ex.id);
+    assert.strictEqual(updated.rest_seconds, 120);
+  });
+
+  it('rest_seconds of 0 means timer disabled', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const bw = exercises.find(e => e.is_bodyweight);
+    assert.strictEqual(bw.rest_seconds, 0);
+  });
+
+  it('addExercise with custom rest_seconds', () => {
+    const days = DB.getDays();
+    const added = DB.addExercise(days[0].id, {
+      name: 'Custom Rest', target_sets: 3, rep_range_low: 8, rep_range_high: 12,
+      is_bodyweight: false, is_compound: false, starting_weight: 20, rest_seconds: 45,
+    });
+    assert.strictEqual(added.rest_seconds, 45);
+  });
+
+  it('addExercise without rest_seconds gets default', () => {
+    const days = DB.getDays();
+    const added = DB.addExercise(days[0].id, {
+      name: 'No Rest Specified', target_sets: 3, rep_range_low: 8, rep_range_high: 12,
+      is_bodyweight: false, is_compound: true, starting_weight: 50,
+    });
+    assert.strictEqual(added.rest_seconds, 90);
+  });
+
+  it('migration adds rest_seconds to exercises missing it', () => {
+    // Simulate old data without rest_seconds
+    const raw = localStorage.getItem('workout_tracker_db');
+    const data = JSON.parse(raw);
+    for (const ex of data.exercises) delete ex.rest_seconds;
+    localStorage.setItem('workout_tracker_db', JSON.stringify(data));
+    // Force cache invalidation by reading after modification
+    const exercises = DB.getExercises(DB.getDays()[0].id);
+    exercises.forEach(ex => {
+      assert.ok(ex.rest_seconds !== undefined, `${ex.name} should have rest_seconds after migration`);
+    });
+  });
+});
+
 describe('Validation', () => {
 
   beforeEach(() => { resetAndSeed(); });

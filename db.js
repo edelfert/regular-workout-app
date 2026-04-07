@@ -30,6 +30,8 @@ var DB = (() => {
       if (data._nextId.days <= maxDayId) data._nextId.days = maxDayId + 1;
       if (data._nextId.exercises <= maxExId) data._nextId.exercises = maxExId + 1;
       if (data._nextId.sessions <= maxSessId) data._nextId.sessions = maxSessId + 1;
+      // Migration: add rest_seconds to exercises missing it
+      migrate(data);
       _cache = data;
       _cacheRaw = raw;
       return data;
@@ -37,6 +39,24 @@ var DB = (() => {
       console.warn('Workout DB: JSON parse failed, resetting.', e);
       localStorage.removeItem(STORAGE_KEY);
       return JSON.parse(JSON.stringify(EMPTY_DB));
+    }
+  }
+
+  function migrate(data) {
+    let changed = false;
+    for (const ex of data.exercises) {
+      if (ex.rest_seconds === undefined) {
+        ex.rest_seconds = ex.is_bodyweight ? 0 : (ex.is_compound ? 90 : 60);
+        changed = true;
+      }
+    }
+    if (changed) {
+      try {
+        const raw = JSON.stringify(data);
+        localStorage.setItem(STORAGE_KEY, raw);
+        _cache = data;
+        _cacheRaw = raw;
+      } catch (e) { /* ignore migration save errors */ }
     }
   }
 
@@ -113,7 +133,8 @@ var DB = (() => {
 
       exercisesByDay[day.day_number].forEach((ex, idx) => {
         const exId = data._nextId.exercises++;
-        data.exercises.push({ id: exId, day_id: dayId, sort_order: idx, ...ex });
+        const rest_seconds = ex.is_bodyweight ? 0 : (ex.is_compound ? 90 : 60);
+        data.exercises.push({ id: exId, day_id: dayId, sort_order: idx, rest_seconds, ...ex });
       });
     }
 
@@ -157,6 +178,7 @@ var DB = (() => {
 
     exercises.forEach((ex, idx) => {
       const exId = data._nextId.exercises++;
+      const defaultRest = ex.is_bodyweight ? 0 : (ex.is_compound ? 90 : 60);
       data.exercises.push({
         id: exId,
         day_id: dayId,
@@ -167,6 +189,7 @@ var DB = (() => {
         is_bodyweight: !!ex.is_bodyweight,
         is_compound: !!ex.is_compound,
         starting_weight: ex.starting_weight != null ? ex.starting_weight : null, // #3: preserve 0
+        rest_seconds: ex.rest_seconds != null ? ex.rest_seconds : defaultRest,
         sort_order: idx,
       });
     });
@@ -198,6 +221,7 @@ var DB = (() => {
     const existing = data.exercises.filter(e => e.day_id === dayId);
     const maxOrder = existing.reduce((m, e) => Math.max(m, e.sort_order), -1);
     const exId = data._nextId.exercises++;
+    const defaultRest = ex.is_bodyweight ? 0 : (ex.is_compound ? 90 : 60);
     const record = {
       id: exId,
       day_id: dayId,
@@ -208,11 +232,24 @@ var DB = (() => {
       is_bodyweight: !!ex.is_bodyweight,
       is_compound: !!ex.is_compound,
       starting_weight: ex.starting_weight != null ? ex.starting_weight : null, // #3: preserve 0
+      rest_seconds: ex.rest_seconds != null ? ex.rest_seconds : defaultRest,
       sort_order: maxOrder + 1,
     };
     data.exercises.push(record);
     save(data);
     return record;
+  }
+
+  function updateExercise(exerciseId, fields) {
+    const data = load();
+    const exercise = data.exercises.find(e => e.id === exerciseId);
+    if (!exercise) throw new Error('Exercise not found');
+    const allowed = ['rest_seconds'];
+    for (const key of allowed) {
+      if (fields[key] !== undefined) exercise[key] = fields[key];
+    }
+    save(data);
+    return exercise;
   }
 
   function normalizeDate(date) {
@@ -349,6 +386,7 @@ var DB = (() => {
     createDay,
     getExercises,
     addExercise,
+    updateExercise,
     logSession,
     deleteSession,
     getLastSession,

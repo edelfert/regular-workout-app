@@ -119,6 +119,10 @@
               <label for="add-ex-weight">Starting Weight (lbs)</label>
               <input type="number" id="add-ex-weight" step="0.5" min="0" placeholder="0">
             </div>
+            <div class="form-group">
+              <label for="add-ex-rest">Rest Timer (sec)</label>
+              <input type="number" id="add-ex-rest" min="0" step="5" placeholder="Auto">
+            </div>
             <div class="form-group form-group-row">
               <label class="checkbox-label"><input type="checkbox" id="add-ex-bw"> Bodyweight</label>
               <label class="checkbox-label"><input type="checkbox" id="add-ex-compound"> Compound</label>
@@ -155,6 +159,7 @@
   </main>
 
   <script src="db.js"></script>
+  <script src="timer.js"></script>
   <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {

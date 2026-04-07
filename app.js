@@ -207,7 +207,8 @@ function loadExercises(dayId) {
         setsHtml += `
           <div class="input-group">
             <label for="rep-${ex.id}-${i}">Set ${i + 1}</label>
-            <input type="number" min="1" id="rep-${ex.id}-${i}" placeholder="${ex.rep_range_low}-${ex.rep_range_high}">
+            <input type="number" min="1" id="rep-${ex.id}-${i}" placeholder="${ex.rep_range_low}-${ex.rep_range_high}"
+              data-exercise-id="${ex.id}" data-set-index="${i}" data-total-sets="${ex.target_sets}" data-rest="${ex.rest_seconds}">
           </div>
         `;
       }
@@ -274,10 +275,48 @@ function loadExercises(dayId) {
       }
 
       listEl.appendChild(card);
+
+      // Wire up rest timer triggers on rep inputs (only if not already logged today)
+      if (!todaySession && ex.rest_seconds > 0) {
+        for (let i = 0; i < ex.target_sets; i++) {
+          const repInput = document.getElementById(`rep-${ex.id}-${i}`);
+          if (repInput) {
+            repInput.addEventListener('keydown', (e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSetComplete(repInput);
+              }
+            });
+          }
+        }
+      }
     });
   } catch (err) {
     errorEl.textContent = 'Failed to load exercises: ' + err.message;
     errorEl.style.display = 'block';
+  }
+}
+
+function handleSetComplete(input) {
+  const val = parseInt(input.value, 10);
+  if (isNaN(val) || val < 1) return;
+
+  const exId = parseInt(input.dataset.exerciseId, 10);
+  const setIdx = parseInt(input.dataset.setIndex, 10);
+  const totalSets = parseInt(input.dataset.totalSets, 10);
+  const restSec = parseInt(input.dataset.rest, 10);
+
+  // Mark this input as done
+  input.classList.add('set-done');
+
+  // If not last set and rest > 0, start timer
+  if (setIdx < totalSets - 1 && restSec > 0) {
+    if (typeof RestTimer !== 'undefined') {
+      RestTimer.start(exId, restSec);
+    }
+    // Focus next set input
+    const nextInput = document.getElementById(`rep-${exId}-${setIdx + 1}`);
+    if (nextInput) nextInput.focus();
   }
 }
 
@@ -709,6 +748,8 @@ document.getElementById('add-exercise-form').addEventListener('submit', (e) => {
   const is_compound = document.getElementById('add-ex-compound').checked;
   const weightVal = document.getElementById('add-ex-weight').value;
   const starting_weight = weightVal !== '' ? parseFloat(weightVal) : null; // #3: preserve 0
+  const restVal = document.getElementById('add-ex-rest').value;
+  const rest_seconds = restVal !== '' ? parseInt(restVal, 10) : null;
 
   if (!dayId) { errorEl.textContent = 'Please select a day.'; errorEl.style.display = 'block'; return; }
   if (!name) { errorEl.textContent = 'Exercise name is required.'; errorEl.style.display = 'block'; return; }
@@ -717,7 +758,7 @@ document.getElementById('add-exercise-form').addEventListener('submit', (e) => {
   if (isNaN(rep_range_high) || rep_range_high < rep_range_low) { errorEl.textContent = 'Rep range high must be at least rep range low.'; errorEl.style.display = 'block'; return; }
 
   try {
-    DB.addExercise(dayId, { name, target_sets, rep_range_low, rep_range_high, is_bodyweight, is_compound, starting_weight });
+    DB.addExercise(dayId, { name, target_sets, rep_range_low, rep_range_high, is_bodyweight, is_compound, starting_weight, rest_seconds });
     showToast(`"${name}" added!`, 'success');
     e.target.reset();
     days = [];
@@ -746,6 +787,7 @@ function addNewDayExerciseRow() {
     <label class="checkbox-label"><input type="checkbox" class="ndex-bw"> BW</label>
     <label class="checkbox-label"><input type="checkbox" class="ndex-compound"> Compound</label>
     <input type="number" placeholder="Weight" step="0.5" min="0" style="width:60px" data-role="weight" aria-label="Starting weight">
+    <input type="number" placeholder="Rest(s)" min="0" style="width:60px" data-role="rest" aria-label="Rest timer seconds">
     <button type="button" class="remove-ex-btn" onclick="this.parentElement.remove()">\u00d7</button>
   `;
   list.appendChild(row);
@@ -776,13 +818,15 @@ document.getElementById('add-day-form').addEventListener('submit', (e) => {
     const isCompound = row.querySelector('.ndex-compound').checked;
     const weightVal = row.querySelector('[data-role="weight"]').value;
     const weight = weightVal !== '' ? parseFloat(weightVal) : null; // #3: preserve 0
+    const restVal = row.querySelector('[data-role="rest"]').value;
+    const rest = restVal !== '' ? parseInt(restVal, 10) : null;
 
     if (!exName) { errorEl.textContent = 'All exercises must have a name.'; errorEl.style.display = 'block'; return; }
     if (isNaN(sets) || sets < 1) { errorEl.textContent = `Invalid sets for "${exName}".`; errorEl.style.display = 'block'; return; }
     if (isNaN(low) || low < 1) { errorEl.textContent = `Invalid rep low for "${exName}".`; errorEl.style.display = 'block'; return; }
     if (isNaN(high) || high < low) { errorEl.textContent = `Invalid rep high for "${exName}".`; errorEl.style.display = 'block'; return; }
 
-    exercises.push({ name: exName, target_sets: sets, rep_range_low: low, rep_range_high: high, is_bodyweight: isBw, is_compound: isCompound, starting_weight: weight });
+    exercises.push({ name: exName, target_sets: sets, rep_range_low: low, rep_range_high: high, is_bodyweight: isBw, is_compound: isCompound, starting_weight: weight, rest_seconds: rest });
   }
 
   try {
