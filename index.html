@@ -176,6 +176,32 @@
         </form>
       </section>
 
+      <section class="manage-section">
+        <h3 class="section-title">Manage Exercises</h3>
+        <p class="view-subtitle" style="margin-bottom:12px;">Reorder, delete, or move exercises between days.</p>
+        <div class="form-group" style="margin-bottom:12px;">
+          <label for="manage-day-select">Workout Day</label>
+          <div class="select-wrapper">
+            <select id="manage-day-select"><option value="">Select a day...</option></select>
+          </div>
+        </div>
+        <div id="manage-exercise-list"></div>
+      </section>
+
+      <section class="manage-section">
+        <h3 class="section-title">Data Export / Import</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          <button class="btn btn-primary" onclick="exportData('json')">Export JSON</button>
+          <button class="btn btn-primary" onclick="exportData('csv')">Export CSV</button>
+        </div>
+        <div class="form-group">
+          <label for="import-file">Import JSON Backup</label>
+          <input type="file" id="import-file" accept=".json" style="padding:8px 0;">
+        </div>
+        <button class="btn btn-ghost" onclick="importData()">Import Data</button>
+        <div id="import-error" class="error-msg" style="display:none;margin-top:8px;"></div>
+      </section>
+
       <section class="manage-section danger-section">
         <h3 class="section-title">Danger Zone</h3>
         <p>Reset all data and re-seed with the default 4-day routine. This cannot be undone.</p>

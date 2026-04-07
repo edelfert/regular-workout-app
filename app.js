@@ -778,6 +778,7 @@ function loadManageSelects() {
       opt.textContent = d.name;
       select.appendChild(opt);
     });
+    loadManageExercises();
   } catch (err) {
     document.getElementById('add-ex-error').textContent = 'Failed to load days: ' + err.message;
     document.getElementById('add-ex-error').style.display = 'block';
@@ -893,6 +894,156 @@ document.getElementById('add-day-form').addEventListener('submit', (e) => {
     errorEl.style.display = 'block';
   }
 });
+
+// --- Manage Exercises (reorder, delete, move) ---
+
+function loadManageExercises() {
+  const select = document.getElementById('manage-day-select');
+  const list = document.getElementById('manage-exercise-list');
+
+  if (days.length === 0) days = DB.getDays();
+  select.innerHTML = '<option value="">Select a day...</option>';
+  days.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.id;
+    opt.textContent = d.name;
+    select.appendChild(opt);
+  });
+
+  select.onchange = () => {
+    const dayId = parseInt(select.value, 10);
+    if (!dayId) { list.innerHTML = ''; return; }
+    renderManageExerciseList(dayId);
+  };
+}
+
+function renderManageExerciseList(dayId) {
+  const list = document.getElementById('manage-exercise-list');
+  const exercises = DB.getExercises(dayId);
+
+  if (exercises.length === 0) {
+    list.innerHTML = '<div class="empty-state"><p>No exercises on this day.</p></div>';
+    return;
+  }
+
+  let html = '';
+  exercises.forEach((ex, i) => {
+    html += `<div class="manage-ex-row" draggable="true" data-ex-id="${ex.id}" data-day-id="${dayId}">
+      <span class="drag-handle" aria-label="Drag to reorder">\u2261</span>
+      <span class="manage-ex-name">${esc(ex.name)}</span>
+      <div class="manage-ex-actions">
+        <select class="move-day-select" data-ex-id="${ex.id}" aria-label="Move to day" onchange="moveExerciseToDay(${ex.id}, this.value, ${dayId})">
+          <option value="">Move...</option>
+          ${days.filter(d => d.id !== dayId).map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}
+        </select>
+        <button class="delete-btn" onclick="deleteExercise(${ex.id}, ${dayId})">Delete</button>
+      </div>
+    </div>`;
+  });
+  list.innerHTML = html;
+
+  // Drag-and-drop reorder
+  let draggedEl = null;
+  list.querySelectorAll('.manage-ex-row').forEach(row => {
+    row.addEventListener('dragstart', (e) => {
+      draggedEl = row;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      draggedEl = null;
+      // Save new order
+      const ids = [...list.querySelectorAll('.manage-ex-row')].map(r => parseInt(r.dataset.exId, 10));
+      try { DB.reorderExercises(dayId, ids); } catch (err) { showToast(err.message, 'error'); }
+    });
+    row.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!draggedEl || draggedEl === row) return;
+      const rect = row.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      if (e.clientY < mid) {
+        list.insertBefore(draggedEl, row);
+      } else {
+        list.insertBefore(draggedEl, row.nextSibling);
+      }
+    });
+  });
+}
+
+function deleteExercise(exerciseId, dayId) {
+  if (!confirm('Delete this exercise and all its session history?')) return;
+  try {
+    DB.deleteExercise(exerciseId);
+    renderManageExerciseList(dayId);
+    days = [];
+    showToast('Exercise deleted', 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+function moveExerciseToDay(exerciseId, newDayId, oldDayId) {
+  if (!newDayId) return;
+  try {
+    DB.moveExercise(exerciseId, parseInt(newDayId, 10));
+    renderManageExerciseList(oldDayId);
+    days = [];
+    showToast('Exercise moved', 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// --- Data Export / Import ---
+
+function exportData(format) {
+  let content, filename, type;
+  const dateStr = getLocalDateStr();
+  if (format === 'json') {
+    content = DB.exportJSON();
+    filename = `workout-data-${dateStr}.json`;
+    type = 'application/json';
+  } else {
+    content = DB.exportCSV();
+    filename = `workout-sessions-${dateStr}.csv`;
+    type = 'text/csv';
+  }
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`Exported ${format.toUpperCase()}`, 'success');
+}
+
+function importData() {
+  const errorEl = document.getElementById('import-error');
+  errorEl.style.display = 'none';
+  const input = document.getElementById('import-file');
+  if (!input.files || !input.files[0]) {
+    errorEl.textContent = 'Select a JSON file first.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  if (!confirm('This will replace ALL your current data. Are you sure?')) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      DB.importJSON(e.target.result);
+      days = [];
+      currentDayId = null;
+      showView('dashboard');
+      showToast('Data imported successfully!', 'success');
+    } catch (err) {
+      errorEl.textContent = 'Import failed: ' + err.message;
+      errorEl.style.display = 'block';
+    }
+  };
+  reader.readAsText(input.files[0]);
+}
 
 // Reset database
 document.getElementById('reset-db-btn').addEventListener('click', () => {

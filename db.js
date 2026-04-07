@@ -49,6 +49,10 @@ var DB = (() => {
         ex.rest_seconds = ex.is_bodyweight ? 0 : (ex.is_compound ? 90 : 60);
         changed = true;
       }
+      if (ex.superset_group === undefined) {
+        ex.superset_group = null;
+        changed = true;
+      }
     }
     if (changed) {
       try {
@@ -244,12 +248,64 @@ var DB = (() => {
     const data = load();
     const exercise = data.exercises.find(e => e.id === exerciseId);
     if (!exercise) throw new Error('Exercise not found');
-    const allowed = ['rest_seconds'];
+    const allowed = ['rest_seconds', 'superset_group'];
     for (const key of allowed) {
       if (fields[key] !== undefined) exercise[key] = fields[key];
     }
     save(data);
     return exercise;
+  }
+
+  function setSupersetGroup(exerciseIds, groupId) {
+    const data = load();
+    for (const id of exerciseIds) {
+      const ex = data.exercises.find(e => e.id === id);
+      if (ex) ex.superset_group = groupId;
+    }
+    save(data);
+  }
+
+  function clearSupersetGroup(exerciseId) {
+    const data = load();
+    const ex = data.exercises.find(e => e.id === exerciseId);
+    if (ex) ex.superset_group = null;
+    save(data);
+  }
+
+  function deleteExercise(exerciseId) {
+    const data = load();
+    const idx = data.exercises.findIndex(e => e.id === exerciseId);
+    if (idx === -1) throw new Error('Exercise not found');
+    data.exercises.splice(idx, 1);
+    data.sessions = data.sessions.filter(s => s.exercise_id !== exerciseId);
+    save(data);
+  }
+
+  function reorderExercises(dayId, orderedIds) {
+    const data = load();
+    const dayExercises = data.exercises.filter(e => e.day_id === dayId);
+    if (orderedIds.length !== dayExercises.length) throw new Error('ID count mismatch');
+    for (const id of orderedIds) {
+      if (!dayExercises.some(e => e.id === id)) throw new Error(`Exercise ${id} not found in day ${dayId}`);
+    }
+    orderedIds.forEach((id, i) => {
+      const ex = data.exercises.find(e => e.id === id);
+      ex.sort_order = i;
+    });
+    save(data);
+  }
+
+  function moveExercise(exerciseId, newDayId) {
+    const data = load();
+    const exercise = data.exercises.find(e => e.id === exerciseId);
+    if (!exercise) throw new Error('Exercise not found');
+    if (!data.workout_days.some(d => d.id === newDayId)) throw new Error('Day not found');
+    const existing = data.exercises.filter(e => e.day_id === newDayId);
+    const maxOrder = existing.reduce((m, e) => Math.max(m, e.sort_order), -1);
+    exercise.day_id = newDayId;
+    exercise.sort_order = maxOrder + 1;
+    exercise.superset_group = null;
+    save(data);
   }
 
   function normalizeDate(date) {
@@ -487,6 +543,39 @@ var DB = (() => {
     }
   }
 
+  function exportJSON() {
+    return JSON.stringify(load(), null, 2);
+  }
+
+  function exportCSV() {
+    const data = load();
+    const rows = [['Date', 'Day', 'Exercise', 'Weight', 'Reps', 'Volume']];
+    for (const s of data.sessions) {
+      const exercise = data.exercises.find(e => e.id === s.exercise_id);
+      const day = exercise ? data.workout_days.find(d => d.id === exercise.day_id) : null;
+      const w = s.weight || 0;
+      const vol = s.reps.reduce((sum, r) => sum + r * w, 0);
+      rows.push([
+        s.date,
+        day ? day.name : '',
+        exercise ? exercise.name : '',
+        s.weight != null ? s.weight : 'BW',
+        '"' + s.reps.join(', ') + '"',
+        vol,
+      ]);
+    }
+    return rows.map(r => r.join(',')).join('\n');
+  }
+
+  function importJSON(jsonStr) {
+    const data = JSON.parse(jsonStr);
+    if (!data || !Array.isArray(data.workout_days) || !Array.isArray(data.exercises) || !Array.isArray(data.sessions) || !data._nextId) {
+      throw new Error('Invalid workout data format');
+    }
+    save(data);
+    return data;
+  }
+
   function resetDatabase() {
     localStorage.removeItem(STORAGE_KEY);
     _cache = null;
@@ -501,6 +590,11 @@ var DB = (() => {
     getExercises,
     addExercise,
     updateExercise,
+    deleteExercise,
+    reorderExercises,
+    moveExercise,
+    setSupersetGroup,
+    clearSupersetGroup,
     logSession,
     deleteSession,
     getLastSession,
@@ -512,6 +606,9 @@ var DB = (() => {
     getEstimated1RM,
     getPersonalRecords,
     computeSuggestion,
+    exportJSON,
+    exportCSV,
+    importJSON,
     resetDatabase,
   };
 })();

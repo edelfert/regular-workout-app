@@ -436,6 +436,126 @@ describe('History / Calendar (DB)', () => {
   });
 });
 
+describe('Superset Support', () => {
+
+  beforeEach(() => { resetAndSeed(); });
+
+  it('setSupersetGroup correctly groups exercises', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    DB.setSupersetGroup([exercises[0].id, exercises[1].id], 1);
+    const updated = DB.getExercises(days[0].id);
+    assert.strictEqual(updated[0].superset_group, 1);
+    assert.strictEqual(updated[1].superset_group, 1);
+  });
+
+  it('clearSupersetGroup clears the group field', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    DB.setSupersetGroup([exercises[0].id], 1);
+    DB.clearSupersetGroup(exercises[0].id);
+    const updated = DB.getExercises(days[0].id);
+    assert.strictEqual(updated[0].superset_group, null);
+  });
+
+  it('superset groups persist across reload', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    DB.setSupersetGroup([exercises[0].id, exercises[1].id], 42);
+    // Force reload by clearing cache
+    const reloaded = DB.getExercises(days[0].id);
+    assert.strictEqual(reloaded[0].superset_group, 42);
+    assert.strictEqual(reloaded[1].superset_group, 42);
+  });
+});
+
+describe('Reorder & Delete Exercises', () => {
+
+  beforeEach(() => { resetAndSeed(); });
+
+  it('deleteExercise removes exercise and all sessions', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => e.name === 'Leg Press');
+    const hadSessions = DB.getProgress(ex.id).sessions.length > 0;
+    assert.ok(hadSessions);
+    DB.deleteExercise(ex.id);
+    const remaining = DB.getExercises(days[0].id);
+    assert.ok(!remaining.some(e => e.id === ex.id));
+    // Sessions should also be gone
+    assert.throws(() => DB.getProgress(ex.id), /not found/);
+  });
+
+  it('deleteExercise throws for non-existent', () => {
+    assert.throws(() => DB.deleteExercise(99999), /not found/);
+  });
+
+  it('reorderExercises updates sort_order correctly', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const reversed = exercises.map(e => e.id).reverse();
+    DB.reorderExercises(days[0].id, reversed);
+    const reordered = DB.getExercises(days[0].id);
+    assert.strictEqual(reordered[0].id, reversed[0]);
+    assert.strictEqual(reordered[reordered.length - 1].id, reversed[reversed.length - 1]);
+  });
+
+  it('reorder with invalid IDs throws', () => {
+    const days = DB.getDays();
+    assert.throws(() => DB.reorderExercises(days[0].id, [99999]), /mismatch/);
+  });
+
+  it('moveExercise moves to another day', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises[0];
+    DB.moveExercise(ex.id, days[1].id);
+    const day1 = DB.getExercises(days[0].id);
+    const day2 = DB.getExercises(days[1].id);
+    assert.ok(!day1.some(e => e.id === ex.id));
+    assert.ok(day2.some(e => e.id === ex.id));
+  });
+});
+
+describe('Data Export / Import', () => {
+
+  beforeEach(() => { resetAndSeed(); });
+
+  it('JSON export contains all DB data', () => {
+    const json = DB.exportJSON();
+    const data = JSON.parse(json);
+    assert.ok(Array.isArray(data.workout_days));
+    assert.ok(Array.isArray(data.exercises));
+    assert.ok(Array.isArray(data.sessions));
+    assert.ok(data._nextId);
+  });
+
+  it('CSV export has correct headers and row count', () => {
+    const csv = DB.exportCSV();
+    const lines = csv.split('\n');
+    assert.ok(lines[0].includes('Date'));
+    assert.ok(lines[0].includes('Exercise'));
+    const data = JSON.parse(DB.exportJSON());
+    assert.strictEqual(lines.length, data.sessions.length + 1); // header + data rows
+  });
+
+  it('JSON import restores data correctly', () => {
+    const exported = DB.exportJSON();
+    DB.resetDatabase();
+    DB.importJSON(exported);
+    const days = DB.getDays();
+    assert.strictEqual(days.length, 4);
+  });
+
+  it('import with invalid JSON throws gracefully', () => {
+    assert.throws(() => DB.importJSON('not json!'), /./);
+  });
+
+  it('import with invalid structure throws', () => {
+    assert.throws(() => DB.importJSON('{"bad":true}'), /Invalid workout data/);
+  });
+});
+
 describe('Exercise Library', () => {
 
   it('library has at least 80 exercises', () => {

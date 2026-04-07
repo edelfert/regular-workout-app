@@ -818,6 +818,56 @@ nav {
   border-color: var(--red-border);
 }
 
+/* ---- Manage Exercise List ---- */
+
+.manage-ex-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  cursor: grab;
+  transition: all var(--transition);
+}
+
+.manage-ex-row:active { cursor: grabbing; }
+.manage-ex-row.dragging { opacity: 0.4; }
+
+.drag-handle {
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  cursor: grab;
+  user-select: none;
+  padding: 0 4px;
+}
+
+.manage-ex-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.manage-ex-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.manage-ex-actions select {
+  padding: 4px 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
 /* ---- Screen Reader Only ---- */
 
 .sr-only {
