@@ -154,14 +154,17 @@ function loadExercises(dayId) {
     const animate = !dashboardInitialized;
     dashboardInitialized = true;
 
+    const today = getLocalDateStr();
+
     exercises.forEach((ex, index) => {
       const card = document.createElement('div');
       card.className = 'exercise-card' + (animate ? ' animate-in' : '');
       card.id = `exercise-${ex.id}`;
       if (animate) card.style.animationDelay = `${index * 0.05}s`;
 
-      // #13: Use lightweight DB.getLastSession instead of full getProgress
-      const lastSession = DB.getLastSession(ex.id);
+      // Check if already logged today
+      const todaySession = DB.getTodaySession(ex.id, today);
+      const lastSession = todaySession || DB.getLastSession(ex.id);
 
       // Badge
       let badgeHtml = '';
@@ -182,7 +185,23 @@ function loadExercises(dayId) {
         lastHtml = `<div class="last-session-info" id="last-${ex.id}" style="display:none;"></div>`;
       }
 
-      // Set inputs — always blank, last session shown as reference above
+      // Compute suggestion for pre-filling weight
+      let suggestion = null;
+      if (lastSession) {
+        suggestion = DB.computeSuggestion(ex, lastSession.weight, lastSession.reps);
+      }
+
+      // Pre-fill weight: use suggestion's newWeight if available, else last session weight
+      let prefillWeight = '';
+      if (!ex.is_bodyweight) {
+        if (suggestion && suggestion.newWeight != null) {
+          prefillWeight = suggestion.newWeight;
+        } else if (lastSession && lastSession.weight != null) {
+          prefillWeight = lastSession.weight;
+        }
+      }
+
+      // Set inputs
       let setsHtml = '';
       for (let i = 0; i < ex.target_sets; i++) {
         setsHtml += `
@@ -193,19 +212,23 @@ function loadExercises(dayId) {
         `;
       }
 
-      // Weight input — always blank
+      // Weight input — pre-fill with suggested weight
       let weightHtml = '';
       if (!ex.is_bodyweight) {
         weightHtml = `
           <div class="input-group weight-group">
             <label for="weight-${ex.id}">Weight</label>
-            <input type="number" min="0" step="0.5" id="weight-${ex.id}" placeholder="${ex.starting_weight != null ? ex.starting_weight : 0}">
+            <input type="number" min="0" step="0.5" id="weight-${ex.id}" value="${prefillWeight}" placeholder="${ex.starting_weight != null ? ex.starting_weight : 0}">
           </div>
         `;
       }
 
       // #9: Show starting weight even when it's 0
       const startWeightLabel = ex.starting_weight != null ? `<span>Start: ${ex.starting_weight} lbs</span>` : '';
+
+      // If logged today, hide input area and show banner
+      const inputDisplay = todaySession ? 'display:none;' : '';
+      const actionsDisplay = todaySession ? 'display:none;' : '';
 
       // #1: Escape exercise name to prevent XSS
       card.innerHTML = `
@@ -218,21 +241,76 @@ function loadExercises(dayId) {
           ${startWeightLabel}
         </div>
         ${lastHtml}
-        <div class="input-row">
+        <div class="input-row" style="${inputDisplay}">
           ${weightHtml}
           ${setsHtml}
         </div>
-        <div class="card-actions">
+        <div class="card-actions" style="${actionsDisplay}">
           <button class="log-btn" onclick="logWorkout(${ex.id}, ${ex.target_sets}, ${ex.is_bodyweight})">Log Workout</button>
         </div>
         <div id="error-${ex.id}" class="inline-error" style="display:none;"></div>
         <div id="suggestion-${ex.id}" class="suggestion-box" style="display:none;"></div>
       `;
+
+      // If logged today, append the banner and suggestion
+      if (todaySession) {
+        const bannerEl = document.createElement('div');
+        bannerEl.className = 'logged-banner';
+        bannerEl.innerHTML = `
+          <span class="logged-check">\u2713</span> Logged today
+          <button class="edit-logged-btn" onclick="editLoggedWorkout(${ex.id})">Edit</button>
+        `;
+        card.appendChild(bannerEl);
+
+        if (suggestion) {
+          const sugEl = card.querySelector(`#suggestion-${ex.id}`);
+          sugEl.textContent = suggestion.message;
+          let sugClass = 'suggestion-box';
+          if (suggestion.action === 'drop') sugClass += ' drop';
+          else if (suggestion.action === 'hold') sugClass += ' hold';
+          sugEl.className = sugClass;
+          sugEl.style.display = 'block';
+        }
+      }
+
       listEl.appendChild(card);
     });
   } catch (err) {
     errorEl.textContent = 'Failed to load exercises: ' + err.message;
     errorEl.style.display = 'block';
+  }
+}
+
+function editLoggedWorkout(exerciseId) {
+  const card = document.getElementById(`exercise-${exerciseId}`);
+  const inputRow = card.querySelector('.input-row');
+  const actions = card.querySelector('.card-actions');
+  const banner = card.querySelector('.logged-banner');
+  const suggestionEl = document.getElementById(`suggestion-${exerciseId}`);
+
+  // Re-show the input area
+  if (inputRow) inputRow.style.display = '';
+  if (actions) actions.style.display = '';
+  if (banner) banner.remove();
+  if (suggestionEl) suggestionEl.style.display = 'none';
+
+  // Pre-fill inputs with today's logged values so user can edit
+  const today = getLocalDateStr();
+  const todaySession = DB.getTodaySession(exerciseId, today);
+  if (todaySession) {
+    const wInput = document.getElementById(`weight-${exerciseId}`);
+    if (wInput && todaySession.weight != null) wInput.value = todaySession.weight;
+    todaySession.reps.forEach((r, i) => {
+      const repInput = document.getElementById(`rep-${exerciseId}-${i}`);
+      if (repInput) repInput.value = r;
+    });
+  }
+
+  // Update button text to indicate re-log
+  const btn = card.querySelector('.log-btn');
+  if (btn) {
+    btn.textContent = 'Update Workout';
+    btn.disabled = false;
   }
 }
 
@@ -294,9 +372,13 @@ function logWorkout(exerciseId, targetSets, isBodyweight) {
   const today = getLocalDateStr();
 
   try {
+    // If editing a previously logged session, delete the old one first
+    const existing = DB.getTodaySession(exerciseId, today);
+    if (existing) DB.deleteSession(existing.id);
+
     const result = DB.logSession(exerciseId, today, weight, reps);
 
-    showToast('Workout logged!', 'success');
+    showToast(existing ? 'Workout updated!' : 'Workout logged!', 'success');
 
     // Collapse card into completed state
     const card = document.getElementById(`exercise-${exerciseId}`);
@@ -315,9 +397,11 @@ function logWorkout(exerciseId, targetSets, isBodyweight) {
     }
 
     // Show completed banner
+    const oldBanner = card.querySelector('.logged-banner');
+    if (oldBanner) oldBanner.remove();
     const doneEl = document.createElement('div');
     doneEl.className = 'logged-banner';
-    doneEl.innerHTML = '<span class="logged-check">\u2713</span> Logged today';
+    doneEl.innerHTML = `<span class="logged-check">\u2713</span> Logged today <button class="edit-logged-btn" onclick="editLoggedWorkout(${exerciseId})">Edit</button>`;
     card.appendChild(doneEl);
 
     // Show suggestion below the banner

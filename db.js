@@ -270,6 +270,12 @@ var DB = (() => {
     return sessions.length > 0 ? sessions[0] : null;
   }
 
+  function getTodaySession(exerciseId, date) {
+    const data = load();
+    const normalized = normalizeDate(date);
+    return data.sessions.find(s => s.exercise_id === exerciseId && s.date === normalized) || null;
+  }
+
   function getProgress(exerciseId) {
     const data = load();
     const exercise = data.exercises.find(e => e.id === exerciseId);
@@ -346,6 +352,7 @@ var DB = (() => {
     logSession,
     deleteSession,
     getLastSession,
+    getTodaySession,
     getProgress,
     computeSuggestion,
     resetDatabase,
