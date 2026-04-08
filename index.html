@@ -27,6 +27,13 @@
     <div class="header-brand">
       <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5h11"/><path d="M6.5 17.5h11"/><rect x="2" y="8" width="4" height="8" rx="1"/><rect x="18" y="8" width="4" height="8" rx="1"/><rect x="9" y="5" width="2" height="14" rx=".5"/><rect x="13" y="5" width="2" height="14" rx=".5"/></svg>
       <h1>Workout Tracker</h1>
+      <div id="workout-timer-display" class="workout-timer-display" style="display:none;">
+        <span id="workout-timer-value">00:00</span>
+      </div>
+    </div>
+    <div class="header-controls">
+      <button id="unit-toggle" class="header-toggle-btn" onclick="toggleUnit()" aria-label="Toggle weight unit">lbs</button>
+      <button id="theme-toggle" class="header-toggle-btn" onclick="toggleTheme()" aria-label="Toggle theme"></button>
     </div>
     <nav>
       <button id="nav-dashboard" class="nav-btn active" onclick="showView('dashboard')" aria-label="Dashboard view">
@@ -40,6 +47,10 @@
       <button id="nav-history" class="nav-btn" onclick="showView('history')" aria-label="Workout history">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         History
+      </button>
+      <button id="nav-body" class="nav-btn" onclick="showView('body')" aria-label="Body measurements">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="20" x2="12" y2="16"/><line x1="16" y1="20" x2="12" y2="16"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
+        Body
       </button>
       <button id="nav-manage" class="nav-btn" onclick="showView('manage')" aria-label="Manage program">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
@@ -102,6 +113,59 @@
       <div id="calendar-grid" class="calendar-grid"></div>
       <div id="calendar-day-detail" style="display:none;"></div>
       <div id="calendar-stats" class="calendar-stats"></div>
+    </div>
+
+    <!-- Body Measurements View -->
+    <div id="view-body" class="view" style="display:none;">
+      <div class="view-header">
+        <h2>Body Measurements</h2>
+        <p class="view-subtitle">Track body composition over time</p>
+      </div>
+      <form id="measurement-form" class="manage-form">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="meas-date">Date</label>
+            <input type="date" id="meas-date" required>
+          </div>
+          <div class="form-group">
+            <label for="meas-weight">Body Weight</label>
+            <input type="number" id="meas-weight" step="0.1" min="0" placeholder="lbs">
+          </div>
+          <div class="form-group">
+            <label for="meas-chest">Chest</label>
+            <input type="number" id="meas-chest" step="0.1" min="0" placeholder="inches">
+          </div>
+          <div class="form-group">
+            <label for="meas-waist">Waist</label>
+            <input type="number" id="meas-waist" step="0.1" min="0" placeholder="inches">
+          </div>
+          <div class="form-group">
+            <label for="meas-hips">Hips</label>
+            <input type="number" id="meas-hips" step="0.1" min="0" placeholder="inches">
+          </div>
+          <div class="form-group">
+            <label for="meas-biceps-l">Bicep (L)</label>
+            <input type="number" id="meas-biceps-l" step="0.1" min="0" placeholder="inches">
+          </div>
+          <div class="form-group">
+            <label for="meas-biceps-r">Bicep (R)</label>
+            <input type="number" id="meas-biceps-r" step="0.1" min="0" placeholder="inches">
+          </div>
+          <div class="form-group">
+            <label for="meas-thigh-l">Thigh (L)</label>
+            <input type="number" id="meas-thigh-l" step="0.1" min="0" placeholder="inches">
+          </div>
+          <div class="form-group">
+            <label for="meas-thigh-r">Thigh (R)</label>
+            <input type="number" id="meas-thigh-r" step="0.1" min="0" placeholder="inches">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Measurement</button>
+      </form>
+      <div id="measurements-history" class="measurements-history"></div>
+      <div id="bodyweight-chart-container" style="display:none;margin-top:16px;">
+        <canvas id="bodyweight-chart"></canvas>
+      </div>
     </div>
 
     <!-- Manage View -->

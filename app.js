@@ -66,6 +66,7 @@ function showView(view) {
   if (view === 'dashboard') loadDashboard();
   if (view === 'progress') loadProgressSelects();
   if (view === 'history') loadHistory();
+  if (view === 'body') loadBodyMeasurements();
   if (view === 'manage') loadManageSelects();
 }
 
@@ -202,7 +203,7 @@ function loadExercises(dayId) {
         }
       }
 
-      // Set inputs
+      // Set inputs with RPE selector
       let setsHtml = '';
       for (let i = 0; i < ex.target_sets; i++) {
         setsHtml += `
@@ -210,6 +211,10 @@ function loadExercises(dayId) {
             <label for="rep-${ex.id}-${i}">Set ${i + 1}</label>
             <input type="number" min="1" id="rep-${ex.id}-${i}" placeholder="${ex.rep_range_low}-${ex.rep_range_high}"
               data-exercise-id="${ex.id}" data-set-index="${i}" data-total-sets="${ex.target_sets}" data-rest="${ex.rest_seconds}">
+            <div class="rpe-selector">
+              <label for="rpe-${ex.id}-${i}">RPE</label>
+              <select id="rpe-${ex.id}-${i}"><option value="">-</option><option>6</option><option>6.5</option><option>7</option><option>7.5</option><option>8</option><option>8.5</option><option>9</option><option>9.5</option><option>10</option></select>
+            </div>
           </div>
         `;
       }
@@ -228,6 +233,31 @@ function loadExercises(dayId) {
       // #9: Show starting weight even when it's 0
       const startWeightLabel = ex.starting_weight != null ? `<span>Start: ${ex.starting_weight} lbs</span>` : '';
 
+      // Notes
+      const noteText = ex.note || '';
+      const noteHtml = `
+        <div class="exercise-note" id="note-section-${ex.id}">
+          <button class="exercise-note-toggle" onclick="toggleNoteArea(${ex.id})">+ Note</button>
+          <textarea class="exercise-note-area" id="note-${ex.id}" placeholder="Add a note..." style="display:none;"
+            onblur="saveNote(${ex.id})">${esc(noteText)}</textarea>
+        </div>
+      `;
+
+      // Warmup sets (for compound non-bodyweight exercises with weight)
+      let warmupHtml = '';
+      if (!ex.is_bodyweight && ex.is_compound && prefillWeight && prefillWeight > 45) {
+        const warmups = calculateWarmupSets(prefillWeight);
+        if (warmups.length > 0) {
+          const warmupRows = warmups.map(s => `<div class="warmup-set-row"><span>${s.label}</span><span>${s.weight} lbs x ${s.reps}</span></div>`).join('');
+          warmupHtml = `
+            <div class="warmup-sets" id="warmup-${ex.id}" style="${todaySession ? 'display:none;' : ''}">
+              <button class="warmup-toggle" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">Warmup Sets</button>
+              <div style="display:none;">${warmupRows}</div>
+            </div>
+          `;
+        }
+      }
+
       // If logged today, hide input area and show banner
       const inputDisplay = todaySession ? 'display:none;' : '';
       const actionsDisplay = todaySession ? 'display:none;' : '';
@@ -243,6 +273,8 @@ function loadExercises(dayId) {
           ${startWeightLabel}
         </div>
         ${lastHtml}
+        ${noteHtml}
+        ${warmupHtml}
         <div class="input-row" style="${inputDisplay}">
           ${weightHtml}
           ${setsHtml}
@@ -276,6 +308,25 @@ function loadExercises(dayId) {
       }
 
       listEl.appendChild(card);
+
+      // Wire plate calculator to weight input
+      if (!ex.is_bodyweight && !todaySession) {
+        const wInput = document.getElementById(`weight-${ex.id}`);
+        if (wInput) {
+          wInput.addEventListener('input', () => renderPlateCalculator(ex.id));
+          if (wInput.value) renderPlateCalculator(ex.id);
+        }
+      }
+
+      // Show existing note text if present
+      if (noteText) {
+        const noteArea = document.getElementById(`note-${ex.id}`);
+        const noteToggle = card.querySelector('.exercise-note-toggle');
+        if (noteArea && noteToggle) {
+          noteArea.style.display = '';
+          noteToggle.textContent = 'Note';
+        }
+      }
 
       // Wire up rest timer triggers on rep inputs (only if not already logged today)
       if (!todaySession && ex.rest_seconds > 0) {
@@ -401,6 +452,13 @@ function logWorkout(exerciseId, targetSets, isBodyweight) {
     }
   }
 
+  // Collect RPE values
+  const rpeValues = [];
+  for (let i = 0; i < targetSets; i++) {
+    const rpeSelect = document.getElementById(`rpe-${exerciseId}-${i}`);
+    rpeValues.push(rpeSelect && rpeSelect.value ? parseFloat(rpeSelect.value) : null);
+  }
+
   if (!valid) {
     errorEl.textContent = 'Fill in all fields. Reps must be at least 1' + (isBodyweight ? '.' : ', weight at least 0.');
     errorEl.style.display = 'block';
@@ -416,7 +474,10 @@ function logWorkout(exerciseId, targetSets, isBodyweight) {
     const existing = DB.getTodaySession(exerciseId, today);
     if (existing) DB.deleteSession(existing.id);
 
-    const result = DB.logSession(exerciseId, today, weight, reps);
+    const result = DB.logSession(exerciseId, today, weight, reps, rpeValues);
+
+    // Auto-start workout duration timer on first log
+    ensureWorkoutTimer();
 
     showToast(existing ? 'Workout updated!' : 'Workout logged!', 'success');
 
@@ -1418,5 +1479,297 @@ function addFromLibrary() {
   }
 }
 
+// --- Notes (3.6) ---
+
+function toggleNoteArea(exerciseId) {
+  const area = document.getElementById(`note-${exerciseId}`);
+  const toggle = area.previousElementSibling;
+  if (area.style.display === 'none') {
+    area.style.display = '';
+    toggle.textContent = 'Note';
+    area.focus();
+  } else {
+    area.style.display = 'none';
+    toggle.textContent = '+ Note';
+  }
+}
+
+function saveNote(exerciseId) {
+  const area = document.getElementById(`note-${exerciseId}`);
+  if (!area) return;
+  try {
+    DB.setExerciseNote(exerciseId, area.value.trim());
+  } catch (e) { /* ignore */ }
+}
+
+// --- Body Measurements (3.2) ---
+
+let bodyweightChart = null;
+
+function loadBodyMeasurements() {
+  const form = document.getElementById('measurement-form');
+  const historyEl = document.getElementById('measurements-history');
+  const chartContainer = document.getElementById('bodyweight-chart-container');
+
+  const dateInput = document.getElementById('meas-date');
+  if (!dateInput.value) dateInput.value = getLocalDateStr();
+
+  if (!form.dataset.wired) {
+    form.dataset.wired = '1';
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const entry = {
+        date: dateInput.value,
+        weight: parseFloat(document.getElementById('meas-weight').value) || null,
+        chest: parseFloat(document.getElementById('meas-chest').value) || null,
+        waist: parseFloat(document.getElementById('meas-waist').value) || null,
+        hips: parseFloat(document.getElementById('meas-hips').value) || null,
+        biceps_l: parseFloat(document.getElementById('meas-biceps-l').value) || null,
+        biceps_r: parseFloat(document.getElementById('meas-biceps-r').value) || null,
+        thigh_l: parseFloat(document.getElementById('meas-thigh-l').value) || null,
+        thigh_r: parseFloat(document.getElementById('meas-thigh-r').value) || null,
+      };
+      if (!entry.weight && !entry.chest && !entry.waist && !entry.hips && !entry.biceps_l && !entry.biceps_r && !entry.thigh_l && !entry.thigh_r) {
+        showToast('Enter at least one measurement', 'error');
+        return;
+      }
+      DB.addMeasurement(entry);
+      showToast('Measurement saved!', 'success');
+      form.reset();
+      dateInput.value = getLocalDateStr();
+      loadBodyMeasurements();
+    });
+  }
+
+  const measurements = DB.getMeasurements();
+  if (measurements.length === 0) {
+    historyEl.innerHTML = '<div class="empty-state"><p>No measurements recorded yet.</p></div>';
+    chartContainer.style.display = 'none';
+    return;
+  }
+
+  let html = '';
+  for (let i = measurements.length - 1; i >= 0; i--) {
+    const m = measurements[i];
+    const vals = [];
+    if (m.weight) vals.push(`<span><span class="measurement-label">Weight</span> ${m.weight}</span>`);
+    if (m.chest) vals.push(`<span><span class="measurement-label">Chest</span> ${m.chest}</span>`);
+    if (m.waist) vals.push(`<span><span class="measurement-label">Waist</span> ${m.waist}</span>`);
+    if (m.hips) vals.push(`<span><span class="measurement-label">Hips</span> ${m.hips}</span>`);
+    if (m.biceps_l) vals.push(`<span><span class="measurement-label">Bicep L</span> ${m.biceps_l}</span>`);
+    if (m.biceps_r) vals.push(`<span><span class="measurement-label">Bicep R</span> ${m.biceps_r}</span>`);
+    if (m.thigh_l) vals.push(`<span><span class="measurement-label">Thigh L</span> ${m.thigh_l}</span>`);
+    if (m.thigh_r) vals.push(`<span><span class="measurement-label">Thigh R</span> ${m.thigh_r}</span>`);
+    html += `<div class="measurement-row"><span class="measurement-date">${esc(formatDate(m.date))}</span><div class="measurement-values">${vals.join('')}</div></div>`;
+  }
+  historyEl.innerHTML = html;
+
+  const withWeight = measurements.filter(m => m.weight);
+  if (withWeight.length >= 2 && typeof Chart !== 'undefined') {
+    chartContainer.style.display = '';
+    if (bodyweightChart) bodyweightChart.destroy();
+    const ctx = document.getElementById('bodyweight-chart').getContext('2d');
+    bodyweightChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: withWeight.map(m => formatDate(m.date)),
+        datasets: [{
+          label: 'Body Weight',
+          data: withWeight.map(m => m.weight),
+          borderColor: '#4f6ef7',
+          backgroundColor: 'rgba(79, 110, 247, 0.1)',
+          fill: true,
+          tension: 0.3,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { ticks: { color: '#8a8fa8' }, grid: { color: 'rgba(30,34,53,0.5)' } },
+          x: { ticks: { color: '#8a8fa8', maxTicksLimit: 8 }, grid: { display: false } },
+        },
+      },
+    });
+  } else {
+    chartContainer.style.display = 'none';
+  }
+}
+
+// --- Workout Duration Timer (3.1) ---
+
+let workoutTimerInterval = null;
+
+function startWorkoutTimer() {
+  const active = DB.getActiveWorkoutSession();
+  if (!active && currentDayId) {
+    DB.startWorkoutSession(currentDayId);
+  }
+  updateWorkoutTimerDisplay();
+  if (!workoutTimerInterval) {
+    workoutTimerInterval = setInterval(updateWorkoutTimerDisplay, 1000);
+  }
+}
+
+function stopWorkoutTimer() {
+  if (workoutTimerInterval) {
+    clearInterval(workoutTimerInterval);
+    workoutTimerInterval = null;
+  }
+  const result = DB.endWorkoutSession();
+  const display = document.getElementById('workout-timer-display');
+  if (display) display.style.display = 'none';
+  if (result) {
+    const mins = Math.floor(result.duration_seconds / 60);
+    showToast(`Workout complete! Duration: ${mins} min`, 'success');
+  }
+}
+
+function updateWorkoutTimerDisplay() {
+  const active = DB.getActiveWorkoutSession();
+  const display = document.getElementById('workout-timer-display');
+  const value = document.getElementById('workout-timer-value');
+  if (!active || !display || !value) return;
+  display.style.display = '';
+  const elapsed = Math.floor((Date.now() - active.startedAt) / 1000);
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  value.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function ensureWorkoutTimer() {
+  const active = DB.getActiveWorkoutSession();
+  if (!active && currentDayId) {
+    startWorkoutTimer();
+  } else if (active && !workoutTimerInterval) {
+    workoutTimerInterval = setInterval(updateWorkoutTimerDisplay, 1000);
+    updateWorkoutTimerDisplay();
+  }
+}
+
+// --- Plate Calculator (3.3) ---
+
+function calculatePlates(targetWeight, barWeight) {
+  if (barWeight === undefined) barWeight = 45;
+  const availablePlates = [45, 35, 25, 10, 5, 2.5];
+  const perSide = (targetWeight - barWeight) / 2;
+  if (perSide <= 0) return { plates: [], perSide: 0, barWeight };
+  let remaining = perSide;
+  const plates = [];
+  for (const plate of availablePlates) {
+    while (remaining >= plate) {
+      plates.push(plate);
+      remaining -= plate;
+    }
+  }
+  return { plates, perSide, barWeight };
+}
+
+function renderPlateCalculator(exerciseId) {
+  const wInput = document.getElementById(`weight-${exerciseId}`);
+  if (!wInput) return;
+  const existing = document.getElementById(`plates-${exerciseId}`);
+  const weight = parseFloat(wInput.value);
+  if (isNaN(weight) || weight <= 0) {
+    if (existing) existing.remove();
+    return;
+  }
+  const barWeight = 45;
+  let text = '';
+  if (weight < barWeight) {
+    text = '<span class="plate-warning">Below bar weight</span>';
+  } else if (weight === barWeight) {
+    text = '<span class="plate-info">Empty bar</span>';
+  } else {
+    const result = calculatePlates(weight, barWeight);
+    text = result.plates.length > 0
+      ? `<span class="plate-info">Per side: ${result.plates.join(' + ')} lbs</span>`
+      : '';
+  }
+  if (existing) {
+    existing.innerHTML = text;
+  } else {
+    const el = document.createElement('div');
+    el.id = `plates-${exerciseId}`;
+    el.className = 'plate-display';
+    el.innerHTML = text;
+    wInput.parentElement.after(el);
+  }
+}
+
+// --- Warmup Set Calculator (3.4) ---
+
+function calculateWarmupSets(workingWeight, barWeight) {
+  if (barWeight === undefined) barWeight = 45;
+  if (workingWeight <= barWeight) return [];
+  const pcts = [0, 0.5, 0.7, 0.85];
+  const reps = [5, 5, 3, 2];
+  return pcts.map((pct, i) => {
+    const w = pct === 0 ? barWeight : Math.round((workingWeight * pct) * 2) / 2;
+    return { weight: Math.max(w, barWeight), reps: reps[i], label: pct === 0 ? 'Bar' : `${Math.round(pct * 100)}%` };
+  }).filter((s, i, arr) => i === 0 || s.weight !== arr[i - 1].weight);
+}
+
+// --- Unit Conversion (3.7) ---
+
+function getUnitLabel() {
+  const settings = DB.getSettings();
+  return settings.unit || 'lbs';
+}
+
+function convertWeight(lbs, toUnit) {
+  if (toUnit === 'kg') return parseFloat((lbs / 2.20462).toFixed(1));
+  return lbs;
+}
+
+function displayWeight(lbs) {
+  const unit = getUnitLabel();
+  if (lbs == null) return 'BW';
+  return `${convertWeight(lbs, unit)} ${unit}`;
+}
+
+// --- Theme (3.8) ---
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const settings = DB.getSettings();
+  settings.theme = theme;
+  DB.saveSettings(settings);
+  const btn = document.getElementById('theme-toggle');
+  if (btn) btn.textContent = theme === 'dark' ? '\u2600' : '\u263E';
+}
+
+function toggleTheme() {
+  const settings = DB.getSettings();
+  applyTheme(settings.theme === 'dark' ? 'light' : 'dark');
+}
+
+function initTheme() {
+  const settings = DB.getSettings();
+  let theme = settings.theme;
+  if (!theme) {
+    theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('theme-toggle');
+  if (btn) btn.textContent = theme === 'dark' ? '\u2600' : '\u263E';
+}
+
+function toggleUnit() {
+  const settings = DB.getSettings();
+  settings.unit = settings.unit === 'lbs' ? 'kg' : 'lbs';
+  DB.saveSettings(settings);
+  const btn = document.getElementById('unit-toggle');
+  if (btn) btn.textContent = settings.unit;
+  if (currentDayId) loadExercises(currentDayId);
+  showToast(`Units: ${settings.unit}`, 'success');
+}
+
 // --- Init ---
+initTheme();
+(function initUnit() {
+  const btn = document.getElementById('unit-toggle');
+  if (btn) btn.textContent = getUnitLabel();
+})();
+ensureWorkoutTimer();
 loadDashboard();

@@ -889,3 +889,163 @@ describe('Validation', () => {
     assert.strictEqual(new Set(ids).size, ids.length, 'All day IDs should be unique');
   });
 });
+
+// ====== Phase 3 Tests ======
+
+describe('Workout Duration Timer (3.1)', () => {
+  beforeEach(resetAndSeed);
+
+  it('starts and retrieves active workout session', () => {
+    const days = DB.getDays();
+    DB.startWorkoutSession(days[0].id);
+    const active = DB.getActiveWorkoutSession();
+    assert.ok(active);
+    assert.strictEqual(active.dayId, days[0].id);
+    assert.ok(active.startedAt > 0);
+  });
+
+  it('ends workout session and records duration', () => {
+    const days = DB.getDays();
+    DB.startWorkoutSession(days[0].id);
+    const result = DB.endWorkoutSession();
+    assert.ok(result);
+    assert.ok(result.duration_seconds >= 0);
+    assert.ok(result.id > 0);
+    const active = DB.getActiveWorkoutSession();
+    assert.strictEqual(active, null, 'Should be cleared after end');
+  });
+
+  it('returns null when ending without active session', () => {
+    const result = DB.endWorkoutSession();
+    assert.strictEqual(result, null);
+  });
+});
+
+describe('Body Measurements (3.2)', () => {
+  beforeEach(resetAndSeed);
+
+  it('adds and retrieves measurements', () => {
+    DB.addMeasurement({ date: '2025-03-01', weight: 180, chest: 42 });
+    const ms = DB.getMeasurements();
+    assert.strictEqual(ms.length, 1);
+    assert.strictEqual(ms[0].weight, 180);
+    assert.strictEqual(ms[0].chest, 42);
+  });
+
+  it('updates measurement on same date', () => {
+    DB.addMeasurement({ date: '2025-03-01', weight: 180 });
+    DB.addMeasurement({ date: '2025-03-01', weight: 178 });
+    const ms = DB.getMeasurements();
+    assert.strictEqual(ms.length, 1);
+    assert.strictEqual(ms[0].weight, 178);
+  });
+
+  it('returns measurements sorted by date', () => {
+    DB.addMeasurement({ date: '2025-03-15', weight: 180 });
+    DB.addMeasurement({ date: '2025-03-01', weight: 182 });
+    DB.addMeasurement({ date: '2025-03-10', weight: 181 });
+    const ms = DB.getMeasurements();
+    assert.strictEqual(ms[0].date, '2025-03-01');
+    assert.strictEqual(ms[2].date, '2025-03-15');
+  });
+
+  it('getLatestBodyweight returns most recent', () => {
+    DB.addMeasurement({ date: '2025-03-01', weight: 180 });
+    DB.addMeasurement({ date: '2025-03-15', weight: 175 });
+    assert.strictEqual(DB.getLatestBodyweight(), 175);
+  });
+
+  it('getLatestBodyweight returns null when no measurements', () => {
+    assert.strictEqual(DB.getLatestBodyweight(), null);
+  });
+});
+
+describe('Notes (3.6)', () => {
+  beforeEach(resetAndSeed);
+
+  it('sets and persists exercise note', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    DB.setExerciseNote(exercises[0].id, 'Focus on form');
+    const updated = DB.getExercises(days[0].id);
+    assert.strictEqual(updated[0].note, 'Focus on form');
+  });
+
+  it('clears note with empty string', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    DB.setExerciseNote(exercises[0].id, 'Test');
+    DB.setExerciseNote(exercises[0].id, '');
+    const updated = DB.getExercises(days[0].id);
+    assert.strictEqual(updated[0].note, '');
+  });
+
+  it('throws for non-existent exercise', () => {
+    assert.throws(() => DB.setExerciseNote(9999, 'test'), /not found/);
+  });
+
+  it('sets session note', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+    const result = DB.logSession(ex.id, '2025-03-01', 100, [10, 10, 10]);
+    DB.setSessionNote(result.id, 'Felt strong');
+    const raw = JSON.parse(localStorage.getItem('workout_tracker_db'));
+    const session = raw.sessions.find(s => s.id === result.id);
+    assert.strictEqual(session.note, 'Felt strong');
+  });
+});
+
+describe('Settings (3.7)', () => {
+  beforeEach(resetAndSeed);
+
+  it('returns defaults when no settings exist', () => {
+    localStorage.removeItem('workout_tracker_settings');
+    const s = DB.getSettings();
+    assert.strictEqual(s.unit, 'lbs');
+    assert.strictEqual(s.theme, 'dark');
+  });
+
+  it('saves and retrieves settings', () => {
+    DB.saveSettings({ unit: 'kg', theme: 'light' });
+    const s = DB.getSettings();
+    assert.strictEqual(s.unit, 'kg');
+    assert.strictEqual(s.theme, 'light');
+  });
+});
+
+describe('RPE Tracking (3.5)', () => {
+  beforeEach(resetAndSeed);
+
+  it('stores RPE values with session', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+    DB.logSession(ex.id, '2025-03-01', 100, [10, 10, 10], [8, 8.5, 9]);
+    const { sessions } = DB.getProgress(ex.id);
+    assert.ok(sessions.length > 0);
+    const session = sessions[0];
+    assert.strictEqual(session.setsData[0].rpe, 8);
+    assert.strictEqual(session.setsData[1].rpe, 8.5);
+    assert.strictEqual(session.setsData[2].rpe, 9);
+  });
+
+  it('handles null RPE gracefully', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+    DB.logSession(ex.id, '2025-03-01', 100, [10, 10, 10], [null, null, null]);
+    const { sessions } = DB.getProgress(ex.id);
+    assert.ok(sessions.length > 0);
+    assert.strictEqual(sessions[0].setsData[0].rpe, undefined);
+  });
+
+  it('works without RPE parameter', () => {
+    const days = DB.getDays();
+    const exercises = DB.getExercises(days[0].id);
+    const ex = exercises.find(e => !e.is_bodyweight);
+    DB.logSession(ex.id, '2025-03-01', 100, [10, 10, 10]);
+    const { sessions } = DB.getProgress(ex.id);
+    assert.ok(sessions.length > 0);
+  });
+});

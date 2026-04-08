@@ -6,7 +6,7 @@
 var DB = (() => {
   const STORAGE_KEY = 'workout_tracker_db';
 
-  const EMPTY_DB = { workout_days: [], exercises: [], sessions: [], _nextId: { days: 1, exercises: 1, sessions: 1 } };
+  const EMPTY_DB = { workout_days: [], exercises: [], sessions: [], measurements: [], workout_sessions: [], _nextId: { days: 1, exercises: 1, sessions: 1, measurements: 1, workout_sessions: 1 } };
 
   let _cache = null;
   let _cacheRaw = null;
@@ -18,6 +18,13 @@ var DB = (() => {
     try {
       const data = JSON.parse(raw);
       // Basic shape validation
+      // Ensure new arrays exist for forward compat
+      if (data && data._nextId) {
+        if (!Array.isArray(data.measurements)) data.measurements = [];
+        if (!Array.isArray(data.workout_sessions)) data.workout_sessions = [];
+        if (!data._nextId.measurements) data._nextId.measurements = 1;
+        if (!data._nextId.workout_sessions) data._nextId.workout_sessions = 1;
+      }
       if (!data || !Array.isArray(data.workout_days) || !Array.isArray(data.exercises) || !Array.isArray(data.sessions) || !data._nextId) {
         console.warn('Workout DB: corrupt data detected, resetting.');
         localStorage.removeItem(STORAGE_KEY);
@@ -339,7 +346,7 @@ var DB = (() => {
     return `${match[1]}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   }
 
-  function logSession(exerciseId, date, weight, reps) {
+  function logSession(exerciseId, date, weight, reps, rpe) {
     const data = load();
     const exercise = data.exercises.find(e => e.id === exerciseId);
     if (!exercise) throw new Error('Exercise not found');
@@ -355,8 +362,12 @@ var DB = (() => {
     if (duplicate) throw new Error('Session already logged for this exercise on this date. Delete it first or choose a different date.');
 
     const normalizedWeight = exercise.is_bodyweight ? null : weight; // #4: normalize before storing and computing
-    // Convert plain number reps to objects with type
-    const normalizedReps = reps.map(r => typeof r === 'number' ? { reps: r, type: 'normal' } : r);
+    // Convert plain number reps to objects with type and optional RPE
+    const normalizedReps = reps.map((r, i) => {
+      const obj = typeof r === 'number' ? { reps: r, type: 'normal' } : r;
+      if (rpe && rpe[i] != null) obj.rpe = rpe[i];
+      return obj;
+    });
     const sessId = data._nextId.sessions++;
     data.sessions.push({
       id: sessId,
@@ -579,6 +590,97 @@ var DB = (() => {
     }
   }
 
+  // --- Workout Duration (3.1) ---
+
+  const WORKOUT_START_KEY = 'workout_tracker_session_start';
+
+  function startWorkoutSession(dayId) {
+    const now = Date.now();
+    try { localStorage.setItem(WORKOUT_START_KEY, JSON.stringify({ dayId, startedAt: now })); } catch (e) { /* */ }
+    return now;
+  }
+
+  function getActiveWorkoutSession() {
+    try {
+      const raw = localStorage.getItem(WORKOUT_START_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  function endWorkoutSession() {
+    const active = getActiveWorkoutSession();
+    if (!active) return null;
+    const duration = Math.round((Date.now() - active.startedAt) / 1000);
+    const data = load();
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    const id = data._nextId.workout_sessions++;
+    data.workout_sessions.push({ id, day_id: active.dayId, date: dateStr, duration_seconds: duration, started_at: active.startedAt });
+    save(data);
+    localStorage.removeItem(WORKOUT_START_KEY);
+    return { id, duration_seconds: duration };
+  }
+
+  // --- Body Measurements (3.2) ---
+
+  function addMeasurement(entry) {
+    const data = load();
+    const date = normalizeDate(entry.date);
+    const existing = data.measurements.findIndex(m => m.date === date);
+    if (existing >= 0) {
+      Object.assign(data.measurements[existing], entry, { date });
+    } else {
+      const id = data._nextId.measurements++;
+      data.measurements.push({ id, date, weight: entry.weight || null, chest: entry.chest || null, waist: entry.waist || null, hips: entry.hips || null, biceps_l: entry.biceps_l || null, biceps_r: entry.biceps_r || null, thigh_l: entry.thigh_l || null, thigh_r: entry.thigh_r || null });
+    }
+    save(data);
+  }
+
+  function getMeasurements() {
+    return load().measurements.slice().sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  function getLatestBodyweight() {
+    const m = load().measurements.slice().sort((a, b) => b.date.localeCompare(a.date));
+    for (const entry of m) {
+      if (entry.weight) return entry.weight;
+    }
+    return null;
+  }
+
+  // --- Notes (3.6) ---
+
+  function setExerciseNote(exerciseId, note) {
+    const data = load();
+    const ex = data.exercises.find(e => e.id === exerciseId);
+    if (!ex) throw new Error('Exercise not found');
+    ex.note = note || '';
+    save(data);
+  }
+
+  function setSessionNote(sessionId, note) {
+    const data = load();
+    const s = data.sessions.find(s => s.id === sessionId);
+    if (!s) throw new Error('Session not found');
+    s.note = note || '';
+    save(data);
+  }
+
+  // --- Settings (3.7/3.8) ---
+
+  const SETTINGS_KEY = 'workout_tracker_settings';
+
+  function getSettings() {
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      return raw ? JSON.parse(raw) : { unit: 'lbs', theme: 'dark' };
+    } catch (e) { return { unit: 'lbs', theme: 'dark' }; }
+  }
+
+  function saveSettings(settings) {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  }
+
   function exportJSON() {
     return JSON.stringify(load(), null, 2);
   }
@@ -643,6 +745,16 @@ var DB = (() => {
     getEstimated1RM,
     getPersonalRecords,
     computeSuggestion,
+    startWorkoutSession,
+    getActiveWorkoutSession,
+    endWorkoutSession,
+    addMeasurement,
+    getMeasurements,
+    getLatestBodyweight,
+    setExerciseNote,
+    setSessionNote,
+    getSettings,
+    saveSettings,
     exportJSON,
     exportCSV,
     importJSON,
