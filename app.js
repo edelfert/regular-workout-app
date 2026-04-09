@@ -702,14 +702,14 @@ function renderChart(data) {
     datasets.push({
       label: 'Weight (lbs)',
       data: weights,
-      borderColor: '#4f6ef7',
-      backgroundColor: 'rgba(79, 110, 247, 0.08)',
+      borderColor: '#D0BCFF',
+      backgroundColor: 'rgba(208, 188, 255, 0.08)',
       yAxisID: 'y',
       tension: 0.35,
       fill: true,
       pointRadius: data.sessions.length === 1 ? 6 : 4,
       pointHoverRadius: 7,
-      pointBackgroundColor: '#4f6ef7',
+      pointBackgroundColor: '#D0BCFF',
       borderWidth: 2.5,
     });
 
@@ -718,7 +718,7 @@ function renderChart(data) {
       datasets.push({
         label: 'Est. 1RM',
         data: e1rmData,
-        borderColor: '#fbbf24',
+        borderColor: '#E6C876',
         backgroundColor: 'transparent',
         yAxisID: 'y',
         tension: 0.35,
@@ -726,7 +726,7 @@ function renderChart(data) {
         borderDash: [6, 3],
         pointRadius: data.sessions.length === 1 ? 5 : 3,
         pointHoverRadius: 6,
-        pointBackgroundColor: '#fbbf24',
+        pointBackgroundColor: '#E6C876',
         borderWidth: 2,
       });
     }
@@ -735,47 +735,47 @@ function renderChart(data) {
   datasets.push({
     label: 'Avg Reps',
     data: avgReps,
-    borderColor: '#34d399',
-    backgroundColor: 'rgba(52, 211, 153, 0.08)',
+    borderColor: '#A8DAB5',
+    backgroundColor: 'rgba(168, 218, 181, 0.08)',
     yAxisID: isBodyweight ? 'y' : 'y1',
     tension: 0.35,
     fill: true,
     pointRadius: data.sessions.length === 1 ? 6 : 4,
     pointHoverRadius: 7,
-    pointBackgroundColor: '#34d399',
+    pointBackgroundColor: '#A8DAB5',
     borderWidth: 2.5,
   });
 
-  const gridColor = 'rgba(30, 34, 53, 0.6)';
+  const gridColor = 'rgba(73, 69, 79, 0.4)';
   const scales = {};
 
   if (!isBodyweight) {
     scales.y = {
       type: 'linear', position: 'left',
-      title: { display: true, text: 'Weight (lbs)', color: '#717799', font: { size: 11, family: 'Inter' } },
-      ticks: { color: '#717799', font: { size: 11, family: 'Inter' } },
+      title: { display: true, text: 'Weight (lbs)', color: '#938F99', font: { size: 11, family: 'Outfit' } },
+      ticks: { color: '#938F99', font: { size: 11, family: 'Outfit' } },
       grid: { color: gridColor },
       border: { color: 'transparent' },
     };
     scales.y1 = {
       type: 'linear', position: 'right',
-      title: { display: true, text: 'Avg Reps', color: '#717799', font: { size: 11, family: 'Inter' } },
-      ticks: { color: '#717799', font: { size: 11, family: 'Inter' } },
+      title: { display: true, text: 'Avg Reps', color: '#938F99', font: { size: 11, family: 'Outfit' } },
+      ticks: { color: '#938F99', font: { size: 11, family: 'Outfit' } },
       grid: { drawOnChartArea: false },
       border: { color: 'transparent' },
     };
   } else {
     scales.y = {
       type: 'linear', position: 'left',
-      title: { display: true, text: 'Avg Reps', color: '#717799', font: { size: 11, family: 'Inter' } },
-      ticks: { color: '#717799', font: { size: 11, family: 'Inter' } },
+      title: { display: true, text: 'Avg Reps', color: '#938F99', font: { size: 11, family: 'Outfit' } },
+      ticks: { color: '#938F99', font: { size: 11, family: 'Outfit' } },
       grid: { color: gridColor },
       border: { color: 'transparent' },
     };
   }
 
   scales.x = {
-    ticks: { color: '#717799', font: { size: 11, family: 'Inter' }, maxRotation: 45 },
+    ticks: { color: '#938F99', font: { size: 11, family: 'Outfit' }, maxRotation: 45 },
     grid: { color: gridColor },
     border: { color: 'transparent' },
   };
@@ -788,18 +788,18 @@ function renderChart(data) {
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: {
-          labels: { color: '#8a8fa8', font: { size: 12, family: 'Inter', weight: '500' }, boxWidth: 12, padding: 16 },
+          labels: { color: '#CAC4D0', font: { size: 12, family: 'Outfit', weight: '500' }, boxWidth: 12, padding: 16 },
         },
         tooltip: {
-          backgroundColor: '#1a1e2e',
-          titleColor: '#f0f0f5',
-          bodyColor: '#8a8fa8',
-          borderColor: '#1e2235',
+          backgroundColor: '#2B2930',
+          titleColor: '#E6E1E5',
+          bodyColor: '#CAC4D0',
+          borderColor: '#49454F',
           borderWidth: 1,
-          cornerRadius: 8,
+          cornerRadius: 12,
           padding: 12,
-          titleFont: { family: 'Inter', weight: '600' },
-          bodyFont: { family: 'Inter' },
+          titleFont: { family: 'Outfit', weight: '600' },
+          bodyFont: { family: 'Outfit' },
           callbacks: {
             afterBody: function(context) {
               const idx = context[0].dataIndex;
@@ -893,7 +893,7 @@ function addNewDayExerciseRow() {
   row.className = 'new-day-exercise-row';
   row.id = `new-day-ex-${newDayExCounter}`;
   row.innerHTML = `
-    <input type="text" placeholder="Exercise name" data-role="name" aria-label="Exercise name">
+    <input type="text" placeholder="Exercise name" data-role="name" aria-label="Exercise name" maxlength="100">
     <input type="number" placeholder="Sets" value="3" min="1" style="width:50px" data-role="sets" aria-label="Target sets">
     <input type="number" placeholder="Low" min="1" style="width:50px" data-role="low" aria-label="Rep range low">
     <input type="number" placeholder="High" min="1" style="width:50px" data-role="high" aria-label="Rep range high">
@@ -989,8 +989,8 @@ function renderManageExerciseList(dayId) {
 
   let html = '';
   exercises.forEach((ex, i) => {
-    html += `<div class="manage-ex-row" draggable="true" data-ex-id="${ex.id}" data-day-id="${dayId}">
-      <span class="drag-handle" aria-label="Drag to reorder">\u2261</span>
+    html += `<div class="manage-ex-row" draggable="true" tabindex="0" data-ex-id="${ex.id}" data-day-id="${dayId}" role="listitem" aria-label="${esc(ex.name)} — use arrow keys to reorder">
+      <span class="drag-handle" aria-hidden="true">\u2261</span>
       <span class="manage-ex-name">${esc(ex.name)}</span>
       <div class="manage-ex-actions">
         <select class="move-day-select" data-ex-id="${ex.id}" aria-label="Move to day" onchange="moveExerciseToDay(${ex.id}, this.value, ${dayId})">
@@ -1027,6 +1027,22 @@ function renderManageExerciseList(dayId) {
         list.insertBefore(draggedEl, row);
       } else {
         list.insertBefore(draggedEl, row.nextSibling);
+      }
+    });
+    // Keyboard reorder: arrow keys move the focused row
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const sibling = e.key === 'ArrowUp' ? row.previousElementSibling : row.nextElementSibling;
+        if (!sibling) return;
+        if (e.key === 'ArrowUp') {
+          list.insertBefore(row, sibling);
+        } else {
+          list.insertBefore(row, sibling.nextSibling);
+        }
+        row.focus();
+        const ids = [...list.querySelectorAll('.manage-ex-row')].map(r => parseInt(r.dataset.exId, 10));
+        try { DB.reorderExercises(dayId, ids); } catch (err) { showToast(err.message, 'error'); }
       }
     });
   });
@@ -1576,8 +1592,8 @@ function loadBodyMeasurements() {
         datasets: [{
           label: 'Body Weight',
           data: withWeight.map(m => m.weight),
-          borderColor: '#4f6ef7',
-          backgroundColor: 'rgba(79, 110, 247, 0.1)',
+          borderColor: '#D0BCFF',
+          backgroundColor: 'rgba(208, 188, 255, 0.1)',
           fill: true,
           tension: 0.3,
         }],
@@ -1586,8 +1602,8 @@ function loadBodyMeasurements() {
         responsive: true,
         plugins: { legend: { display: false } },
         scales: {
-          y: { ticks: { color: '#8a8fa8' }, grid: { color: 'rgba(30,34,53,0.5)' } },
-          x: { ticks: { color: '#8a8fa8', maxTicksLimit: 8 }, grid: { display: false } },
+          y: { ticks: { color: '#938F99' }, grid: { color: 'rgba(73,69,79,0.4)' } },
+          x: { ticks: { color: '#938F99', maxTicksLimit: 8 }, grid: { display: false } },
         },
       },
     });

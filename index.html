@@ -75,7 +75,7 @@
     <div id="view-dashboard" class="view">
       <div id="day-tabs" class="day-tabs"></div>
       <div id="error-dashboard" class="error-msg" style="display:none;"></div>
-      <div id="exercises-list"></div>
+      <div id="exercises-list" aria-live="polite"></div>
     </div>
 
     <!-- Progress View -->
@@ -96,8 +96,8 @@
       <div id="progress-chart-container" style="display:none;">
         <canvas id="progress-chart"></canvas>
       </div>
-      <div id="progress-records" style="display:none;"></div>
-      <div id="progress-suggestion" class="suggestion-box" style="display:none;"></div>
+      <div id="progress-records" aria-live="polite" style="display:none;"></div>
+      <div id="progress-suggestion" class="suggestion-box" aria-live="polite" style="display:none;"></div>
       <div id="progress-history" style="display:none;">
         <h3 class="section-title">Session History</h3>
         <div class="table-wrapper">
@@ -122,8 +122,8 @@
         <button class="btn btn-ghost calendar-today-btn" onclick="calendarToday()">Today</button>
       </div>
       <div id="calendar-grid" class="calendar-grid"></div>
-      <div id="calendar-day-detail" style="display:none;"></div>
-      <div id="calendar-stats" class="calendar-stats"></div>
+      <div id="calendar-day-detail" aria-live="polite" style="display:none;"></div>
+      <div id="calendar-stats" class="calendar-stats" aria-live="polite"></div>
     </div>
 
     <!-- Body Measurements View -->
@@ -173,7 +173,7 @@
         </div>
         <button type="submit" class="btn btn-primary">Save Measurement</button>
       </form>
-      <div id="measurements-history" class="measurements-history"></div>
+      <div id="measurements-history" class="measurements-history" aria-live="polite"></div>
       <div id="bodyweight-chart-container" style="display:none;margin-top:16px;">
         <canvas id="bodyweight-chart"></canvas>
       </div>
@@ -202,7 +202,7 @@
             </div>
             <div class="form-group">
               <label for="add-ex-name">Exercise Name</label>
-              <input type="text" id="add-ex-name" placeholder="e.g. Face Pulls" required>
+              <input type="text" id="add-ex-name" placeholder="e.g. Face Pulls" required maxlength="100">
             </div>
             <div class="form-group">
               <label for="add-ex-sets">Target Sets</label>
@@ -239,7 +239,7 @@
         <form id="add-day-form" class="manage-form">
           <div class="form-group">
             <label for="add-day-name">Day Name</label>
-            <input type="text" id="add-day-name" required placeholder="e.g. Day 5 — Arms">
+            <input type="text" id="add-day-name" required placeholder="e.g. Day 5 — Arms" maxlength="100">
           </div>
           <div id="new-day-exercises">
             <label class="section-label">Exercises</label>
@@ -260,7 +260,7 @@
             <select id="manage-day-select"><option value="">Select a day...</option></select>
           </div>
         </div>
-        <div id="manage-exercise-list"></div>
+        <div id="manage-exercise-list" aria-live="polite"></div>
       </section>
 
       <section class="manage-section">
@@ -293,7 +293,7 @@
         <button class="modal-close" onclick="closeLibrary()" aria-label="Close">&times;</button>
       </div>
       <div class="library-search">
-        <input type="text" id="library-search-input" placeholder="Search exercises..." aria-label="Search exercises">
+        <input type="text" id="library-search-input" placeholder="Search exercises..." aria-label="Search exercises" maxlength="100">
       </div>
       <div class="library-filters" id="library-filters"></div>
       <div class="library-results" id="library-results"></div>

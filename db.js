@@ -698,6 +698,14 @@ var DB = (() => {
     return JSON.stringify(load(), null, 2);
   }
 
+  function csvEscape(val) {
+    const str = String(val);
+    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+      return '"' + str.replace(/"/g, '""') + '"';
+    }
+    return str;
+  }
+
   function exportCSV() {
     const data = load();
     const rows = [['Date', 'Day', 'Exercise', 'Weight', 'Reps', 'Volume']];
@@ -709,10 +717,10 @@ var DB = (() => {
       const vol = rr.reduce((sum, r) => sum + r * w, 0);
       rows.push([
         s.date,
-        day ? day.name : '',
-        exercise ? exercise.name : '',
+        csvEscape(day ? day.name : ''),
+        csvEscape(exercise ? exercise.name : ''),
         s.weight != null ? s.weight : 'BW',
-        '"' + rr.join(', ') + '"',
+        csvEscape(rr.join(', ')),
         vol,
       ]);
     }
