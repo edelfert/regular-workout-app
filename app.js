@@ -187,10 +187,10 @@ function loadExercises(dayId) {
         lastHtml = `<div class="last-session-info" id="last-${ex.id}" style="display:none;"></div>`;
       }
 
-      // Compute suggestion for pre-filling weight
+      // Compute suggestion for pre-filling weight (use setsData to exclude warmup sets)
       let suggestion = null;
       if (lastSession) {
-        suggestion = DB.computeSuggestion(ex, lastSession.weight, lastSession.reps);
+        suggestion = DB.computeSuggestion(ex, lastSession.weight, lastSession.setsData || lastSession.reps);
       }
 
       // Pre-fill weight: use suggestion's newWeight if available, else last session weight
@@ -1737,6 +1737,9 @@ function applyTheme(theme) {
   DB.saveSettings(settings);
   const btn = document.getElementById('theme-toggle');
   if (btn) btn.textContent = theme === 'dark' ? '\u2600' : '\u263E';
+  // Update meta theme-color for browser chrome
+  const meta = document.getElementById('meta-theme-color');
+  if (meta) meta.content = theme === 'dark' ? '#1C1B1F' : '#FEF7FF';
 }
 
 function toggleTheme() {
@@ -1753,6 +1756,8 @@ function initTheme() {
   document.documentElement.setAttribute('data-theme', theme);
   const btn = document.getElementById('theme-toggle');
   if (btn) btn.textContent = theme === 'dark' ? '\u2600' : '\u263E';
+  const meta = document.getElementById('meta-theme-color');
+  if (meta) meta.content = theme === 'dark' ? '#1C1B1F' : '#FEF7FF';
 }
 
 function toggleUnit() {
@@ -1771,5 +1776,12 @@ initTheme();
   const btn = document.getElementById('unit-toggle');
   if (btn) btn.textContent = getUnitLabel();
 })();
-ensureWorkoutTimer();
+// Resume workout timer display if one is already active (from previous page load)
+(function resumeTimerIfActive() {
+  const active = DB.getActiveWorkoutSession();
+  if (active && !workoutTimerInterval) {
+    workoutTimerInterval = setInterval(updateWorkoutTimerDisplay, 1000);
+    updateWorkoutTimerDisplay();
+  }
+})();
 loadDashboard();

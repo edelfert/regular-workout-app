@@ -37,6 +37,10 @@ var DB = (() => {
       if (data._nextId.days <= maxDayId) data._nextId.days = maxDayId + 1;
       if (data._nextId.exercises <= maxExId) data._nextId.exercises = maxExId + 1;
       if (data._nextId.sessions <= maxSessId) data._nextId.sessions = maxSessId + 1;
+      const maxMeasId = data.measurements.reduce((m, e) => Math.max(m, e.id || 0), 0);
+      const maxWsId = data.workout_sessions.reduce((m, e) => Math.max(m, e.id || 0), 0);
+      if (data._nextId.measurements <= maxMeasId) data._nextId.measurements = maxMeasId + 1;
+      if (data._nextId.workout_sessions <= maxWsId) data._nextId.workout_sessions = maxWsId + 1;
       // Migration: add rest_seconds to exercises missing it
       migrate(data);
       _cache = data;
@@ -628,7 +632,16 @@ var DB = (() => {
     const date = normalizeDate(entry.date);
     const existing = data.measurements.findIndex(m => m.date === date);
     if (existing >= 0) {
-      Object.assign(data.measurements[existing], entry, { date });
+      const m = data.measurements[existing];
+      m.date = date;
+      m.weight = entry.weight || null;
+      m.chest = entry.chest || null;
+      m.waist = entry.waist || null;
+      m.hips = entry.hips || null;
+      m.biceps_l = entry.biceps_l || null;
+      m.biceps_r = entry.biceps_r || null;
+      m.thigh_l = entry.thigh_l || null;
+      m.thigh_r = entry.thigh_r || null;
     } else {
       const id = data._nextId.measurements++;
       data.measurements.push({ id, date, weight: entry.weight || null, chest: entry.chest || null, waist: entry.waist || null, hips: entry.hips || null, biceps_l: entry.biceps_l || null, biceps_r: entry.biceps_r || null, thigh_l: entry.thigh_l || null, thigh_r: entry.thigh_r || null });
@@ -711,6 +724,22 @@ var DB = (() => {
     if (!data || !Array.isArray(data.workout_days) || !Array.isArray(data.exercises) || !Array.isArray(data.sessions) || !data._nextId) {
       throw new Error('Invalid workout data format');
     }
+    // Ensure forward-compat arrays
+    if (!Array.isArray(data.measurements)) data.measurements = [];
+    if (!Array.isArray(data.workout_sessions)) data.workout_sessions = [];
+    if (!data._nextId.measurements) data._nextId.measurements = 1;
+    if (!data._nextId.workout_sessions) data._nextId.workout_sessions = 1;
+    // Auto-repair _nextId to prevent collisions with imported IDs
+    const maxDayId = data.workout_days.reduce((m, d) => Math.max(m, d.id), 0);
+    const maxExId = data.exercises.reduce((m, e) => Math.max(m, e.id), 0);
+    const maxSessId = data.sessions.reduce((m, s) => Math.max(m, s.id), 0);
+    const maxMeasId = data.measurements.reduce((m, e) => Math.max(m, e.id || 0), 0);
+    const maxWsId = data.workout_sessions.reduce((m, e) => Math.max(m, e.id || 0), 0);
+    if (data._nextId.days <= maxDayId) data._nextId.days = maxDayId + 1;
+    if (data._nextId.exercises <= maxExId) data._nextId.exercises = maxExId + 1;
+    if (data._nextId.sessions <= maxSessId) data._nextId.sessions = maxSessId + 1;
+    if (data._nextId.measurements <= maxMeasId) data._nextId.measurements = maxMeasId + 1;
+    if (data._nextId.workout_sessions <= maxWsId) data._nextId.workout_sessions = maxWsId + 1;
     save(data);
     return data;
   }

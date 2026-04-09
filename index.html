@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#0a0c14">
+  <meta name="theme-color" content="#1C1B1F" id="meta-theme-color">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Workout">
@@ -15,7 +15,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -35,29 +35,40 @@
       <button id="unit-toggle" class="header-toggle-btn" onclick="toggleUnit()" aria-label="Toggle weight unit">lbs</button>
       <button id="theme-toggle" class="header-toggle-btn" onclick="toggleTheme()" aria-label="Toggle theme"></button>
     </div>
-    <nav>
-      <button id="nav-dashboard" class="nav-btn active" onclick="showView('dashboard')" aria-label="Dashboard view">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        Dashboard
-      </button>
-      <button id="nav-progress" class="nav-btn" onclick="showView('progress')" aria-label="Progress view">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        Progress
-      </button>
-      <button id="nav-history" class="nav-btn" onclick="showView('history')" aria-label="Workout history">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        History
-      </button>
-      <button id="nav-body" class="nav-btn" onclick="showView('body')" aria-label="Body measurements">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="20" x2="12" y2="16"/><line x1="16" y1="20" x2="12" y2="16"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
-        Body
-      </button>
-      <button id="nav-manage" class="nav-btn" onclick="showView('manage')" aria-label="Manage program">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-        Manage
-      </button>
-    </nav>
   </header>
+
+  <nav class="bottom-nav">
+    <button id="nav-dashboard" class="nav-btn active" onclick="showView('dashboard')" aria-label="Dashboard view">
+      <span class="nav-indicator">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </span>
+      <span class="nav-label">Home</span>
+    </button>
+    <button id="nav-progress" class="nav-btn" onclick="showView('progress')" aria-label="Progress view">
+      <span class="nav-indicator">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </span>
+      <span class="nav-label">Progress</span>
+    </button>
+    <button id="nav-history" class="nav-btn" onclick="showView('history')" aria-label="Workout history">
+      <span class="nav-indicator">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </span>
+      <span class="nav-label">History</span>
+    </button>
+    <button id="nav-body" class="nav-btn" onclick="showView('body')" aria-label="Body measurements">
+      <span class="nav-indicator">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="20" x2="12" y2="16"/><line x1="16" y1="20" x2="12" y2="16"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
+      </span>
+      <span class="nav-label">Body</span>
+    </button>
+    <button id="nav-manage" class="nav-btn" onclick="showView('manage')" aria-label="Manage program">
+      <span class="nav-indicator">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </span>
+      <span class="nav-label">Manage</span>
+    </button>
+  </nav>
 
   <main>
     <!-- Dashboard View -->

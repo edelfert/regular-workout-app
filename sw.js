@@ -1,4 +1,4 @@
-const CACHE_NAME = 'workout-v13';
+const CACHE_NAME = 'workout-v14';
 
 // Pre-cache core app shell on install
 self.addEventListener('install', (e) => {
